@@ -42,7 +42,7 @@ jobs:
       - name: Add user instructions
         shell: pwsh
         run: |
-          @'
+          $readme = @'
           JARVIS — Windows portable build
 
           1. Extract the entire JARVIS folder from this ZIP to a folder you control.
@@ -59,12 +59,13 @@ jobs:
           - Local saved memories are stored in an unencrypted SQLite file under your user profile. Do not save secrets.
           - This build is not code-signed. Verify the SHA-256 checksum published with the artifact before running it.
           - This is a portable build artifact, not an installer. Keep the complete folder together.
-          '@ | Set-Content -Encoding UTF8 dist/JARVIS/README.txt
+          '@
+          $readme | Set-Content -Encoding UTF8 dist/JARVIS/README.txt
 
       - name: Create ZIP and checksum
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/JARVIS/* -DestinationPath dist/JARVIS-Windows-x64.zip -Force
+          Compress-Archive -Path dist/JARVIS -DestinationPath dist/JARVIS-Windows-x64.zip -Force
           $hash = (Get-FileHash dist/JARVIS-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
           "$hash  JARVIS-Windows-x64.zip" | Set-Content -Encoding ascii dist/JARVIS-Windows-x64.sha256
 
