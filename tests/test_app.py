@@ -57,3 +57,16 @@ def test_chat_requires_api_key(monkeypatch):
         json={"message": "hello"},
     )
     assert response.status_code == 503
+
+def test_system_metrics_requires_access_token(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    response = client.get("/api/system")
+    assert response.status_code == 401
+
+
+def test_system_metrics_returns_expected_fields_with_valid_token(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    response = client.get("/api/system", headers={"Authorization": "Bearer correct-token"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert set(payload) == {"cpu_percent", "memory_percent", "disk_percent", "uptime"}
