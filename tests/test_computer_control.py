@@ -52,7 +52,7 @@ def test_write_rejects_path_traversal(tmp_path, monkeypatch):
 def test_tool_schemas_include_maintenance_capabilities():
     names = {tool["name"] for tool in control.tool_schemas()}
     assert {"open_path", "list_drives", "copy_to_clipboard", "list_processes",
-            "list_installed_apps", "scan_with_clamav", "request_quarantine_file", "request_system_repair",
+            "list_installed_apps", "analyze_suspicious_file", "scan_with_clamav", "request_quarantine_file", "request_system_repair",
             "request_uninstall", "request_stop_process", "confirm_pending_action"} <= names
 
 
@@ -149,3 +149,21 @@ def test_clamav_scan_is_resource_bounded_and_never_auto_remediates():
     assert "resource-bounded" in schema["description"]
     assert "Never deletes or quarantines" in schema["description"]
     assert "request_quarantine_file" in {tool["name"] for tool in control.tool_schemas()}
+
+
+
+def test_static_triage_reports_indicators_without_execution(tmp_path):
+    sample = tmp_path / "sample.txt"
+    sample.write_text("example string: xmrig stratum+tcp metasp loit", encoding="utf-8")
+    result = json.loads(control.execute_tool("analyze_suspicious_file", json.dumps({"path": str(sample)})))
+    assert result["ok"] is True
+    assert result["analysis"] == "static_triage_only"
+    assert result["sha256"]
+    assert "cryptomining" in {item["category"] for item in result["indicators"]}
+    assert sample.exists()
+
+
+def test_static_triage_rejects_directories(tmp_path):
+    result = json.loads(control.execute_tool("analyze_suspicious_file", json.dumps({"path": str(tmp_path)})))
+    assert result["ok"] is False
+    assert "file path" in result["error"]
