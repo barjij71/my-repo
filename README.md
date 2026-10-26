@@ -4,13 +4,15 @@ A Windows-first personal assistant with a local FastAPI web interface and OpenAI
 
 ## Current status
 
-This is the initial working scaffold. It includes:
+The current feature branch contains a first dashboard and restricted computer-control prototype. It includes:
+- A responsive sci-fi Command Center dashboard inspired by the supplied reference image, with navigation, AI-core animation, activity feed, quick commands, and session timeline
 - A browser chat interface with in-memory conversation history
 - A FastAPI API with bearer-token authentication
 - Restricted Windows computer tools: open Notepad/Calculator/File Explorer and HTTP(S) URLs, create/list/read/write files only inside `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
-- Automated API tests and GitHub Actions CI for Windows and Linux
-- Safe defaults: the server listens on `127.0.0.1`, and this build cannot execute commands or control Windows
+- Authenticated local CPU, memory, disk, and uptime metrics for the dashboard
+- Automated API and computer-tool tests; GitHub Actions runs on Windows and Linux
+- Safe defaults: the server listens on `127.0.0.1`
 
 ## Requirements
 
@@ -51,5 +53,5 @@ GitHub Actions runs the test suite on Windows and Ubuntu for pushes to `main` an
 - API key and access token are stored via Windows Credential Manager.
 - The local web server binds to loopback by default.
 - Provider exceptions are sanitized before returning errors to the browser.
-- Arbitrary shell execution, file deletion, administrator actions, registry changes, and actions outside `Documents\\JARVISWorkspace` are not enabled. The current computer-control tools are intentionally restricted.
+- Arbitrary shell execution, file deletion, administrator actions, registry changes, screen capture, general mouse/keyboard automation, and actions outside `Documents\\JARVISWorkspace` are not enabled. Voice capture, durable memory, browser automation, and approval queues are also not implemented yet.
 - Do not use this starter build to run untrusted code.
