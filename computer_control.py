@@ -20,6 +20,15 @@ _PROTECTED_PROCESSES = {"system", "registry", "smss", "csrss", "wininit", "servi
 MAX_CLIPBOARD_CHARS = 20_000
 
 
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _workspace_path(relative_path: str) -> Path:
     candidate = (WORKSPACE / relative_path).resolve()
     if candidate != WORKSPACE and WORKSPACE not in candidate.parents:
@@ -218,7 +227,7 @@ def execute_tool(name: str, arguments_json: str) -> str:
             details = {"scanned_path": str(target), "target_type": "file" if target.is_file() else "folder"}
             if target.is_file():
                 details["size_bytes"] = target.stat().st_size
-                details["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+                details["sha256"] = _sha256_file(target)
                 details["extension"] = target.suffix.lower()
             if scan.returncode not in (0, 1):
                 return json.dumps({"ok": False, "scanner": "ClamAV", "exit_code": scan.returncode,
@@ -288,7 +297,7 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 source = Path(details["path"])
                 if not source.is_file():
                     raise ValueError("The selected file no longer exists; nothing was changed.")
-                if source.stat().st_size != details["size"] or hashlib.sha256(source.read_bytes()).hexdigest() != details["sha256"]:
+                if source.stat().st_size != details["size"] or _sha256_file(source) != details["sha256"]:
                     raise ValueError("The file changed after review; nothing was moved. Scan and review it again.")
                 quarantine_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "JARVIS" / "Quarantine"
                 quarantine_dir.mkdir(parents=True, exist_ok=True)
