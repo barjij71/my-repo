@@ -59,7 +59,7 @@ def tool_schemas() -> list[dict[str, Any]]:
         s("request_copy_file", "Stage copying a selected file between any accessible Windows drives using absolute source and destination paths. Never overwrite an existing destination; requires explicit confirmation.", {"source_path": {"type": "string"}, "destination_path": {"type": "string"}}, ["source_path", "destination_path"]),
         s("list_processes", "Read-only list of running processes sorted by RAM use.", {"limit": {"type": "integer"}}, ["limit"]),
         s("list_installed_apps", "List installed apps from Windows registry without uninstalling anything.", {}, []),
-        s("defender_quick_scan", "Start Microsoft Defender quick scan; do not manually delete files. Defender handles detections according to Windows Security policy.", {}, []),
+        s("scan_with_clamav", "Scan a specific existing file or folder with ClamAV if installed. Update signatures first when freshclam is available. Report detections; never delete or quarantine automatically. If unavailable, return official install guidance.", {"path": {"type": "string"}}, ["path"]),
         s("request_system_repair", "Stage DISM image repair and SFC scan; requires explicit confirmation and may need Administrator.", {}, []),
         s("request_uninstall", "Stage uninstall of one exact app name via winget. Never remove Windows/security components, drivers, or shared runtimes.", {"app_name": {"type": "string"}}, ["app_name"]),
         s("request_stop_process", "Stage a graceful close request for a user-selected process to reduce load while gaming. Never force-kill or target Windows/security processes.", {"process_name": {"type": "string"}}, ["process_name"]),
@@ -185,11 +185,45 @@ def execute_tool(name: str, arguments_json: str) -> str:
             return _list_processes(args["limit"])
         if name == "list_installed_apps":
             return _list_installed_apps()
-        if name == "defender_quick_scan":
-            r = _powershell("Start-MpScan -ScanType QuickScan; Get-MpComputerStatus | Select-Object AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureLastUpdated | ConvertTo-Json -Compress", 180)
-            if r.returncode:
-                return json.dumps({"ok": False, "error": (r.stderr or r.stdout or "Defender scan could not start.")[:500], "hint": "Check Windows Security and permissions. No files were manually deleted."}, ensure_ascii=False)
-            return json.dumps({"ok": True, "scan": "quick scan command completed", "defender_status": r.stdout.strip(), "note": "Review Windows Security > Protection history. Defender applies its configured remediation policy."}, ensure_ascii=False)
+        if name == "scan_with_clamav":
+            _require_windows()
+            import shutil
+            target = Path(args["path"].strip())
+            if not target.is_absolute() or not target.exists():
+                raise ValueError("Provide an existing absolute file or folder path, such as C:\\\\ or D:\\\\Downloads.")
+            candidates = [
+                shutil.which("clamscan"),
+                str(Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "ClamAV" / "clamscan.exe"),
+                str(Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "ClamAV" / "bin" / "clamscan.exe"),
+                str(Path(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)")) / "ClamAV" / "clamscan.exe"),
+            ]
+            scanner = next((p for p in candidates if p and Path(p).is_file()), None)
+            if not scanner:
+                return json.dumps({"ok": False, "scanner_missing": True,
+                    "message": "ClamAV is not installed or clamscan.exe was not found. No scan was performed.",
+                    "official_download": "https://www.clamav.net/downloads",
+                    "alternative": "ESET offers a free one-time Windows scanner: https://www.eset.com/us/home/online-scanner/",
+                    "note": "Install a scanner from its official site, update its signatures, then retry. JARVIS will not download or execute an installer automatically."}, ensure_ascii=False)
+            freshclam_candidates = [shutil.which("freshclam")]
+            scanner_dir = Path(scanner).parent
+            freshclam_candidates.extend([str(scanner_dir / "freshclam.exe"), str(scanner_dir.parent / "freshclam.exe")])
+            updater = next((p for p in freshclam_candidates if p and Path(p).is_file()), None)
+            update_result = None
+            if updater:
+                u = subprocess.run([updater], capture_output=True, text=True, timeout=300, check=False,
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                update_result = {"exit_code": u.returncode, "output": (u.stdout + "\\n" + u.stderr)[-1200:]}
+            command = [scanner, "--infected", "--recursive", "--stdout", str(target)]
+            scan = subprocess.run(command, capture_output=True, text=True, timeout=3600, check=False,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            output = (scan.stdout + "\\n" + scan.stderr)[-12000:]
+            if scan.returncode not in (0, 1):
+                return json.dumps({"ok": False, "exit_code": scan.returncode, "output": output,
+                    "signature_update": update_result, "note": "ClamAV reported a scan error. No files were removed."}, ensure_ascii=False)
+            return json.dumps({"ok": True, "scanner": "ClamAV", "scanned_path": str(target),
+                "result": "detections_found" if scan.returncode == 1 else "no_detection_reported",
+                "exit_code": scan.returncode, "output": output, "signature_update": update_result,
+                "note": "This is not a guarantee that files are safe. JARVIS does not automatically delete or quarantine detections; review the report and use a trusted security tool for remediation."}, ensure_ascii=False)
         if name == "request_system_repair":
             return _stage("repair", "Run DISM /Online /Cleanup-Image /RestoreHealth followed by sfc /scannow; may require Administrator")
         if name == "request_uninstall":
