@@ -47,3 +47,54 @@ def test_write_rejects_path_traversal(tmp_path, monkeypatch):
     ))
     assert result["ok"] is False
     assert not (tmp_path.parent / "escape.txt").exists()
+
+
+def test_tool_schemas_include_maintenance_capabilities():
+    names = {tool["name"] for tool in control.tool_schemas()}
+    assert {"open_path", "list_drives", "copy_to_clipboard", "list_processes",
+            "list_installed_apps", "defender_quick_scan", "request_system_repair",
+            "request_uninstall", "request_stop_process", "confirm_pending_action"} <= names
+
+
+def test_clipboard_is_text_only_and_rejects_non_windows(monkeypatch):
+    monkeypatch.setattr(control.os, "name", "posix")
+    result = json.loads(control.execute_tool("copy_to_clipboard", json.dumps({"text": "C:\\Games\\game.exe"})))
+    assert result["ok"] is False
+    assert "Windows" in result["error"]
+
+
+def test_stop_process_protects_critical_processes():
+    result = json.loads(control.execute_tool("request_stop_process", json.dumps({"process_name": "lsass.exe"})))
+    assert result["ok"] is False
+    assert "protected" in result["error"]
+
+
+def test_disruptive_actions_are_staged_not_executed():
+    result = json.loads(control.execute_tool("request_system_repair", "{}"))
+    assert result["ok"] is True
+    assert result["status"] == "awaiting_confirmation"
+    assert result["action_id"]
+    assert "No change has been made" in result["message"]
+
+
+def test_uninstall_requires_a_specific_app_name_and_stages_confirmation():
+    result = json.loads(control.execute_tool("request_uninstall", json.dumps({"app_name": "Example App"})))
+    assert result["ok"] is True
+    assert result["status"] == "awaiting_confirmation"
+    assert result["action"].endswith("Example App")
+    protected = json.loads(control.execute_tool("request_uninstall", json.dumps({"app_name": "Microsoft Defender Antivirus"})))
+    assert protected["ok"] is False
+
+
+def test_process_listing_is_read_only():
+    result = json.loads(control.execute_tool("list_processes", json.dumps({"limit": 5})))
+    assert result["ok"] is True
+    assert len(result["processes"]) <= 5
+    assert "Read-only" in result["note"]
+
+
+def test_confirmation_false_cancels_pending_action():
+    staged = json.loads(control.execute_tool("request_system_repair", "{}"))
+    result = json.loads(control.execute_tool("confirm_pending_action", json.dumps({"action_id": staged["action_id"], "confirmed": False})))
+    assert result["ok"] is True
+    assert result["cancelled"] is True
