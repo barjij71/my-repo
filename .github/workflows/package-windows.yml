@@ -37,7 +37,7 @@ jobs:
 
       - name: Build portable app
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core --collect-all win32ctypes jarvis_launcher.py
+          python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --copy-metadata keyring --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core --collect-all win32ctypes jarvis_launcher.py
 
       - name: Add user instructions
         shell: pwsh
