@@ -12,6 +12,16 @@ def test_health_endpoint_is_public_and_reports_version():
     assert response.json()["status"] == "ok"
 
 
+def test_home_page_exposes_optional_push_to_talk_and_spoken_replies():
+    response = client.get("/")
+    assert response.status_code == 200
+    assert 'id="voiceInput"' in response.text
+    assert 'id="speakToggle"' in response.text
+    assert "SpeechRecognition" in response.text
+    assert "speechSynthesis" in response.text
+    assert "press EXECUTE to send it" in response.text
+
+
 def test_status_requires_configured_access_token(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "")
     response = client.get("/api/status")
