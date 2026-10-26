@@ -39,6 +39,12 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --copy-metadata keyring --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core --collect-all win32ctypes jarvis_launcher.py
 
+      - name: Smoke-test packaged executable without credentials or network calls
+        shell: pwsh
+        run: |
+          & "dist/JARVIS/JARVIS.exe" --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Packaged JARVIS self-test failed." }
+
       - name: Add user instructions
         shell: pwsh
         run: |
