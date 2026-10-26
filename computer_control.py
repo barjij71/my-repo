@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
+from memory_store import forget_memory, list_memories, save_memory, search_memories
+
 WORKSPACE = (Path.home() / "Documents" / "JARVISWorkspace").resolve()
 WORKSPACE.mkdir(parents=True, exist_ok=True)
 ALLOWED_APPS = {"notepad": ["notepad.exe"], "calculator": ["calc.exe"], "explorer": ["explorer.exe"]}
@@ -92,6 +94,10 @@ def tool_schemas() -> list[dict[str, Any]]:
         s("read_workspace_file", "Read a UTF-8 text file inside JARVISWorkspace (maximum 200 KB).", {"relative_path": {"type": "string"}}, ["relative_path"]),
         s("write_workspace_file", "Create or replace a UTF-8 text file inside JARVISWorkspace only when explicitly requested.", {"relative_path": {"type": "string"}, "content": {"type": "string"}}, ["relative_path", "content"]),
         s("create_workspace_folder", "Create a folder inside JARVISWorkspace.", {"relative_path": {"type": "string"}}, ["relative_path"]),
+        s("save_memory", "Save one non-secret fact to JARVIS's private local memory only when the user explicitly asks to remember or save it. Never save passwords, keys, tokens, or secrets.", {"content": {"type": "string"}, "category": {"type": "string"}}, ["content", "category"]),
+        s("search_memories", "Search saved local memories when the user asks about something previously saved. Does not access other files.", {"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query", "limit"]),
+        s("list_memories", "List saved local memories only when the user asks what JARVIS remembers.", {"limit": {"type": "integer"}}, ["limit"]),
+        s("forget_memory", "Delete exactly one saved local memory by its numeric ID when the user explicitly asks to forget that specific item. Never guess the ID.", {"memory_id": {"type": "integer"}}, ["memory_id"]),
     ]
 
 
@@ -397,6 +403,14 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 _PENDING_ACTIONS.pop(action_id, None)
                 return json.dumps({"ok": True, "close_requests_sent": sent, "matched_processes": len(matches), "note": "Graceful close requested; unsaved-work prompts may remain. No force-kill was used."})
             raise ValueError("Unsupported pending action type.")
+        if name == "save_memory":
+            return json.dumps(save_memory(args["content"], args["category"]), ensure_ascii=False)
+        if name == "search_memories":
+            return json.dumps(search_memories(args["query"], args["limit"]), ensure_ascii=False)
+        if name == "list_memories":
+            return json.dumps(list_memories(args["limit"]), ensure_ascii=False)
+        if name == "forget_memory":
+            return json.dumps(forget_memory(args["memory_id"]), ensure_ascii=False)
         if name == "list_workspace":
             folder = _workspace_path(args["relative_path"])
             if not folder.exists():
