@@ -1,4 +1,3 @@
-$paramLine = $null
 param([switch]$ResetApiKey)
 $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
