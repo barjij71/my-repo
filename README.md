@@ -8,7 +8,7 @@ The current feature branch contains a first dashboard and restricted computer-co
 - A responsive sci-fi Command Center dashboard inspired by the supplied reference image, with navigation, AI-core animation, activity feed, quick commands, and session timeline
 - A browser chat interface with in-memory conversation history
 - A FastAPI API with bearer-token authentication
-- Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; scan selected files/folders with ClamAV when installed, with official ClamAV/ESET options if no scanner is found; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
+- Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; scan selected files/folders on demand with resource-bounded ClamAV (low process priority, PUA detection, file-count/size/recursion/timeout limits, no automatic signature update), with official ClamAV/ESET options if no scanner is found; stage moving one exact reviewed file to reversible quarantine only after explicit confirmation, verifying its SHA-256 first; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
 - Authenticated local CPU, memory, disk, and uptime metrics for the dashboard
 - Automated API and computer-tool tests; GitHub Actions runs on Windows and Linux
@@ -55,3 +55,12 @@ GitHub Actions runs the test suite on Windows and Ubuntu for pushes to `main` an
 - Provider exceptions are sanitized before returning errors to the browser.
 - Arbitrary shell execution, direct command execution from the clipboard, force-killing processes, manual virus-file deletion, and arbitrary file editing outside `Documents\\JARVISWorkspace` are not enabled. Repair/uninstall/process-close actions are staged and require explicit confirmation. System repair may require launching JARVIS as Administrator. Defender scan/remediation is managed by Windows Security; review Protection history. Closing selected applications can free RAM, but there is no unsafe 'RAM cleaner' or automatic mass process killing. Voice capture, durable memory, general mouse/keyboard automation, screenshot capture, and full browser automation are not implemented yet.
 - Do not use this starter build to run untrusted code.
+
+
+### Lightweight malware review and user-controlled cleanup
+
+- ClamAV scanning is on-demand, not a continuous background service. Each scan uses below-normal process priority, limits files to 50 MB, total scan data to 250 MB, 2,000 files, recursion depth 8, and a 15-minute timeout.
+- Signatures are not automatically downloaded on every scan; this avoids surprise network and CPU use. Keep ClamAV signatures updated through its trusted updater when you choose.
+- Potentially unwanted application (PUA) detection may flag legitimate security-testing tools, including Metasploit components. JARVIS must explain the finding and uncertainty; a detection alone does not prove malicious intent.
+- JARVIS never deletes or quarantines a detection automatically. On the user's separate explicit request, it can stage moving one exact file to `%LOCALAPPDATA%\\JARVIS\\Quarantine`, then require confirmation. It checks the file's SHA-256 again before moving it. This is reversible quarantine, not permanent deletion; folders and files under Windows/Program Files are not eligible.
+- A clean scan does not guarantee a file is safe, and bounded scans may skip oversized or excess files.
