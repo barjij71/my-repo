@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>JARVIS — Personal Assistant</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #08111d; color: #e8f0fb; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at top, #16314b 0, #08111d 55%); }
+    main { width: min(780px, 100%); border: 1px solid #294760; border-radius: 22px; overflow: hidden; background: #0b1724ee; box-shadow: 0 24px 80px #0008; }
+    header { padding: 24px; border-bottom: 1px solid #223b50; display: flex; align-items: center; gap: 14px; }
+    .orb { width: 44px; height: 44px; border: 2px solid #70d6ff; border-radius: 50%; box-shadow: 0 0 22px #39bfff55, inset 0 0 18px #39bfff33; }
+    h1 { margin: 0; font-size: 1.3rem; letter-spacing: .12em; } header p { margin: 5px 0 0; color: #9bb2c8; font-size: .9rem; }
+    #status { margin-left: auto; color: #a9c2d8; font-size: .82rem; text-align: right; }
+    section { padding: 20px 24px; }
+    .connect { display: flex; gap: 10px; flex-wrap: wrap; }
+    input, textarea, button { font: inherit; border-radius: 10px; border: 1px solid #2a4961; }
+    input, textarea { width: 100%; background: #07111c; color: #e8f0fb; padding: 12px; }
+    button { background: #12334a; color: #eaf7ff; padding: 10px 15px; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.primary { background: #12618a; border-color: #2d9bc9; }
+    #messages { min-height: 220px; max-height: 48vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+    .message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; padding: 13px 15px; border-radius: 12px; background: #122438; }
+    .message.user { background: #12394d; align-self: flex-end; max-width: 92%; }
+    .message.assistant { align-self: stretch; }
+    .label { color: #8abedb; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
+    .composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+    textarea { min-height: 54px; max-height: 180px; resize: vertical; }
+    .hint { color: #8ba4ba; font-size: .82rem; line-height: 1.5; }
+    #error { color: #ffb6a8; min-height: 1.2em; font-size: .88rem; }
+    @media (max-width: 520px) { body { padding: 8px; } header, section { padding: 16px; } #status { max-width: 100px; } .composer { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div class="orb" aria-hidden="true"></div>
+    <div><h1>JARVIS</h1><p>Personal assistant · Windows-first</p></div>
+    <div id="status" role="status">Not connected</div>
+  </header>
+  <section>
+    <label for="token">Local access token</label>
+    <div class="connect">
+      <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Enter the token configured on this PC" aria-describedby="token-help">
+      <button id="connect">Connect</button>
+    </div>
+    <p class="hint" id="token-help">The token is kept only in this page's memory and is not saved to browser storage. Never share it.</p>
+    <div id="error" role="alert"></div>
+  </section>
+  <section id="messages" aria-live="polite">
+    <div class="message assistant"><div class="label">JARVIS</div>Ready to connect. This starter build can chat, but cannot execute commands or control your computer.</div>
+  </section>
+  <section>
+    <form id="form">
+      <div class="composer">
+        <textarea id="message" placeholder="Write a message… (Ctrl+Enter to send)" maxlength="6000" required></textarea>
+        <button id="send" class="primary" type="submit" disabled>Send</button>
+      </div>
+    </form>
+    <p class="hint">Conversation history currently stays in this page's memory and is cleared when you reload it.</p>
+  </section>
+</main>
+<script>
+(() => {
+  const tokenInput = document.getElementById('token');
+  const connectButton = document.getElementById('connect');
+  const status = document.getElementById('status');
+  const error = document.getElementById('error');
+  const form = document.getElementById('form');
+  const messageInput = document.getElementById('message');
+  const sendButton = document.getElementById('send');
+  const messages = document.getElementById('messages');
+  let token = '';
+  let history = [];
+  let busy = false;
+
+  function showError(text = '') { error.textContent = text; }
+  function addMessage(role, content) {
+    const box = document.createElement('div');
+    box.className = 'message ' + role;
+    const label = document.createElement('div');
+    label.className = 'label';
+    label.textContent = role === 'user' ? 'You' : 'JARVIS';
+    const body = document.createElement('div');
+    body.textContent = content;
+    box.append(label, body);
+    messages.appendChild(box);
+    messages.scrollTop = messages.scrollHeight;
+  }
+  async function api(path, options = {}) {
+    const response = await fetch(path, {
+      ...options,
+      headers: { ...(options.headers || {}), Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || 'Request failed (' + response.status + ')');
+    return data;
+  }
+  connectButton.addEventListener('click', async () => {
+    token = tokenInput.value.trim();
+    if (!token) { showError('Enter the local access token first.'); return; }
+    showError('');
+    connectButton.disabled = true;
+    try {
+      const data = await api('/api/status');
+      status.textContent = data.ready ? 'Connected' : 'Connected · API key missing';
+      sendButton.disabled = !data.ready;
+      showError(data.ready ? '' : 'Server connected, but OPENAI_API_KEY is not configured on the PC.');
+      tokenInput.value = '';
+    } catch (e) {
+      token = '';
+      status.textContent = 'Not connected';
+      sendButton.disabled = true;
+      showError(e.message);
+    } finally { connectButton.disabled = false; }
+  });
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const message = messageInput.value.trim();
+    if (!message || busy || !token) return;
+    busy = true;
+    sendButton.disabled = true;
+    showError('');
+    addMessage('user', message);
+    const priorHistory = history.slice(-12);
+    history.push({ role: 'user', content: message });
+    messageInput.value = '';
+    try {
+      const data = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, history: priorHistory }) });
+      addMessage('assistant', data.reply);
+      history.push({ role: 'assistant', content: data.reply });
+      history = history.slice(-12);
+    } catch (e) {
+      showError(e.message);
+      history = history.slice(0, -1);
+    } finally {
+      busy = false;
+      sendButton.disabled = !token;
+      messageInput.focus();
+    }
+  });
+  messageInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+})();
+</script>
+</body>
+</html>
