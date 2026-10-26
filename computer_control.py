@@ -146,6 +146,8 @@ def execute_tool(name: str, arguments_json: str) -> str:
             if not path.is_absolute() or not path.exists():
                 raise ValueError("Provide an existing absolute path, such as C:\\Users\\... or D:\\... .")
             if path.is_file():
+                if path.suffix.casefold() in {".exe", ".com", ".bat", ".cmd", ".ps1", ".msi", ".scr", ".vbs", ".js", ".reg", ".lnk"}:
+                    raise ValueError("For safety, JARVIS will not launch executable, script, installer, registry, or shortcut files. Open the containing folder instead.")
                 os.startfile(str(path))
             else:
                 subprocess.Popen(["explorer.exe", str(path)], shell=False, close_fds=True)
