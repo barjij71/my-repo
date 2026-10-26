@@ -18,6 +18,18 @@ ALLOWED_APPS = {"notepad": ["notepad.exe"], "calculator": ["calc.exe"], "explore
 _PENDING_ACTIONS: dict[str, dict[str, str]] = {}
 _PROTECTED_PROCESSES = {"system", "registry", "smss", "csrss", "wininit", "services", "lsass", "svchost", "winlogon", "explorer", "dwm", "fontdrvhost", "spoolsv", "securityhealthservice", "msmpeng", "antimalwareserviceexecutable"}
 MAX_CLIPBOARD_CHARS = 20_000
+BLOCKED_OPEN_SUFFIXES = {
+    ".exe", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".msi", ".msp",
+    ".scr", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
+    ".reg", ".lnk", ".url", ".scf", ".cpl", ".msc", ".dll", ".sys",
+    ".drv", ".ocx", ".jar", ".py", ".pyw", ".xll", ".chm", ".pif",
+    ".gadget", ".application", ".appref-ms", ".html", ".htm",
+}
+
+
+def _is_blocked_open_suffix(path: Path) -> bool:
+    """Refuse file types that may execute code or active content when opened."""
+    return path.suffix.casefold() in BLOCKED_OPEN_SUFFIXES
 
 
 
@@ -159,14 +171,7 @@ def execute_tool(name: str, arguments_json: str) -> str:
             if not path.is_absolute() or not path.exists():
                 raise ValueError("Provide an existing absolute path, such as C:\\Users\\... or D:\\... .")
             if path.is_file():
-                blocked_suffixes = {
-                    ".exe", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".msi", ".msp",
-                    ".scr", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
-                    ".reg", ".lnk", ".url", ".scf", ".cpl", ".msc", ".dll", ".sys",
-                    ".drv", ".ocx", ".jar", ".py", ".pyw", ".xll", ".chm", ".pif",
-                    ".gadget", ".application", ".appref-ms", ".html", ".htm",
-                }
-                if path.suffix.casefold() in blocked_suffixes:
+                if _is_blocked_open_suffix(path):
                     raise ValueError("For safety, JARVIS will not open executable, script, installer, shortcut, registry, or active-content files directly. Open the containing folder instead.")
                 os.startfile(str(path))
             else:
