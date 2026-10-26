@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import re
 import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -48,6 +49,19 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+@contextmanager
+def _database():
+    conn = _connect()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
 def _record(row: sqlite3.Row) -> dict[str, Any]:
     return {
         "id": int(row["id"]),
@@ -69,7 +83,7 @@ def save_memory(content: str, category: str = "general") -> dict[str, Any]:
     if any(pattern.search(text) for pattern in _SECRET_PATTERNS):
         raise ValueError("This looks like a password, API key, access token, or private key. JARVIS will not save secrets.")
 
-    with _connect() as conn:
+    with _database() as conn:
         existing = conn.execute(
             "SELECT id, content, category, created_at FROM memories WHERE content = ? COLLATE NOCASE",
             (text,),
@@ -95,7 +109,7 @@ def search_memories(query: str, limit: int = 10) -> dict[str, Any]:
     if len(term) > 200:
         raise ValueError("Search phrase exceeds the 200-character limit.")
     limit = max(1, min(int(limit), 20))
-    with _connect() as conn:
+    with _database() as conn:
         rows = conn.execute(
             """
             SELECT id, content, category, created_at
@@ -111,7 +125,7 @@ def search_memories(query: str, limit: int = 10) -> dict[str, Any]:
 
 def list_memories(limit: int = 20) -> dict[str, Any]:
     limit = max(1, min(int(limit), 50))
-    with _connect() as conn:
+    with _database() as conn:
         rows = conn.execute(
             "SELECT id, content, category, created_at FROM memories ORDER BY id DESC LIMIT ?",
             (limit,),
@@ -127,7 +141,7 @@ def forget_memory(memory_id: int) -> dict[str, Any]:
         raise ValueError("Provide the exact numeric memory ID.") from None
     if memory_id < 1:
         raise ValueError("Provide the exact numeric memory ID.")
-    with _connect() as conn:
+    with _database() as conn:
         row = conn.execute(
             "SELECT id, content, category, created_at FROM memories WHERE id = ?",
             (memory_id,),
