@@ -69,6 +69,7 @@ def tool_schemas() -> list[dict[str, Any]]:
         s("request_copy_file", "Stage copying a selected file between any accessible Windows drives using absolute source and destination paths. Never overwrite an existing destination; requires explicit confirmation.", {"source_path": {"type": "string"}, "destination_path": {"type": "string"}}, ["source_path", "destination_path"]),
         s("list_processes", "Read-only list of running processes sorted by RAM use.", {"limit": {"type": "integer"}}, ["limit"]),
         s("list_installed_apps", "List installed apps from Windows registry without uninstalling anything.", {}, []),
+        s("analyze_suspicious_file", "Lightweight local static triage of one selected file without installing an antivirus. Reports SHA-256, basic file type, and suspicious strings commonly associated with remote access, persistence, or cryptomining. Findings are heuristics, not proof of malware; does not execute, delete, upload, or quarantine the file.", {"path": {"type": "string"}}, ["path"]),
         s("scan_with_clamav", "On-demand, resource-bounded ClamAV scan of one user-selected existing file or folder. Low process priority, capped file/scan sizes and file count, PUA detection enabled. Never deletes or quarantines. Does not auto-update signatures during scans.", {"path": {"type": "string"}}, ["path"]),
         s("request_quarantine_file", "Stage moving one exact suspicious user-selected file into a reversible JARVIS quarantine after explicit confirmation. Never permanently deletes files or accepts folders/system/program installation paths.", {"path": {"type": "string"}}, ["path"]),
         s("request_system_repair", "Stage DISM image repair and SFC scan; requires explicit confirmation and may need Administrator.", {}, []),
@@ -196,6 +197,41 @@ def execute_tool(name: str, arguments_json: str) -> str:
             return _list_processes(args["limit"])
         if name == "list_installed_apps":
             return _list_installed_apps()
+        if name == "analyze_suspicious_file":
+            target = Path(args["path"].strip()).resolve()
+            if not target.is_absolute() or not target.is_file():
+                raise ValueError("Provide one existing absolute file path; folders are not accepted for static triage.")
+            size = target.stat().st_size
+            digest = _sha256_file(target)
+            sample_limit = 25 * 1024 * 1024
+            with target.open("rb") as stream:
+                sample = stream.read(sample_limit)
+            # Include common ASCII and UTF-16LE strings without executing the file.
+            text_sample = sample.decode("latin-1", errors="ignore").casefold()
+            wide_sample = sample.decode("utf-16le", errors="ignore").casefold()
+            combined = text_sample + "\\n" + wide_sample
+            indicators = []
+            rules = [
+                ("remote_access_or_shell", ["meterpreter", "reverse_tcp", "reverse_https", "bind_tcp", "shellcode", "remote shell", "remoteshell"]),
+                ("credential_or_key_capture", ["keylogger", "getasynckeystate", "credential theft", "lsass", "mimikatz"]),
+                ("persistence_or_autostart", ["currentversion\\\\run", "\\\\software\\\\microsoft\\\\windows\\\\currentversion\\\\run", "schtasks", "startup folder", "runonce"]),
+                ("cryptomining", ["stratum+tcp", "stratum+ssl", "xmrig", "cryptonight", "randomx", "mining.pool", "monero"]),
+                ("download_or_execution_chain", ["powershell -enc", "frombase64string", "downloadstring", "invoke-expression", "urlmon", "winhttp", "createprocess"]),
+                ("process_injection_or_memory_execution", ["virtualalloc", "writeprocessmemory", "createremotethread", "ntunmapviewofsection"]),
+                ("penetration_testing_tool_reference", ["metasploit", "meterpreter", "msfconsole", "msfvenom"]),
+            ]
+            for category, needles in rules:
+                matches = [needle for needle in needles if needle in combined]
+                if matches:
+                    indicators.append({"category": category, "matched_indicators": matches[:8],
+                        "interpretation": "Review context; this indicator can appear in legitimate software too."})
+            file_type = "PE executable or DLL" if sample[:2] == b"MZ" else "unknown / non-PE / script or data"
+            return json.dumps({"ok": True, "analysis": "static_triage_only", "path": str(target),
+                "file_name": target.name, "extension": target.suffix.lower(), "size_bytes": size,
+                "sha256": digest, "file_type_hint": file_type, "bytes_sampled": len(sample),
+                "sample_truncated": size > len(sample), "indicators": indicators,
+                "risk_summary": "review_indicators_found" if indicators else "no_known_string_indicators_found",
+                "note": "This is a lightweight heuristic check, not an antivirus verdict. Strings can be absent, encrypted, or misleading. No file was executed, uploaded, deleted, or quarantined. Metasploit/Metasploit Server and similar testing tools can be legitimate; a tool-name match is not a malware verdict."}, ensure_ascii=False)
         if name == "scan_with_clamav":
             _require_windows()
             import shutil
