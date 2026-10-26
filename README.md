@@ -7,6 +7,7 @@ A Windows-first personal assistant with a local FastAPI web interface and OpenAI
 This is the initial working scaffold. It includes:
 - A browser chat interface with in-memory conversation history
 - A FastAPI API with bearer-token authentication
+- Restricted Windows computer tools: open Notepad/Calculator/File Explorer and HTTP(S) URLs, create/list/read/write files only inside `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
 - Automated API tests and GitHub Actions CI for Windows and Linux
 - Safe defaults: the server listens on `127.0.0.1`, and this build cannot execute commands or control Windows
@@ -50,5 +51,5 @@ GitHub Actions runs the test suite on Windows and Ubuntu for pushes to `main` an
 - API key and access token are stored via Windows Credential Manager.
 - The local web server binds to loopback by default.
 - Provider exceptions are sanitized before returning errors to the browser.
-- Operating-system control, shell execution, file modifications, and other side effects are not implemented in this scaffold.
+- Arbitrary shell execution, file deletion, administrator actions, registry changes, and actions outside `Documents\\JARVISWorkspace` are not enabled. The current computer-control tools are intentionally restricted.
 - Do not use this starter build to run untrusted code.
