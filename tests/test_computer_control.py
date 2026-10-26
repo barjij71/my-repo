@@ -210,3 +210,27 @@ def test_memory_tools_route_through_the_local_store(tmp_path, monkeypatch):
 
     forgotten = json.loads(control.execute_tool("forget_memory", json.dumps({"memory_id": memory_id})))
     assert forgotten["ok"] is True
+
+
+def test_confirmed_copy_helper_never_overwrites_existing_destination(tmp_path):
+    source = tmp_path / "source.txt"
+    destination = tmp_path / "destination.txt"
+    source.write_text("new content", encoding="utf-8")
+    destination.write_text("keep this content", encoding="utf-8")
+
+    try:
+        control._copy_file_no_overwrite(source, destination)
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("Copy helper must refuse an existing destination")
+    assert destination.read_text(encoding="utf-8") == "keep this content"
+
+
+def test_confirmed_copy_helper_copies_new_destination(tmp_path):
+    source = tmp_path / "source.txt"
+    destination = tmp_path / "destination.txt"
+    source.write_text("copy content", encoding="utf-8")
+    copied = control._copy_file_no_overwrite(source, destination)
+    assert copied == len("copy content")
+    assert destination.read_text(encoding="utf-8") == "copy content"
