@@ -1,0 +1,79 @@
+name: JARVIS Windows package
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "computer_control.py"
+      - "memory_store.py"
+      - "jarvis_launcher.py"
+      - "setup_credentials.py"
+      - "requirements.txt"
+      - "static/**"
+      - ".github/workflows/package-windows.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install runtime and packaging dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller
+
+      - name: Build portable app
+        run: |
+          python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core jarvis_launcher.py
+
+      - name: Add user instructions
+        shell: pwsh
+        run: |
+          @'
+          JARVIS — Windows portable build
+
+          1. Extract the entire JARVIS folder from this ZIP to a folder you control.
+          2. Double-click JARVIS.exe. Keep the console window open while using JARVIS.
+          3. On first launch, enter your OpenAI API key in the hidden prompt. It is stored in Windows Credential Manager.
+          4. Copy the local access token shown in the console into the JARVIS browser page and select Connect.
+          5. Use the microphone button only when you want to dictate. Browser speech recognition may use an online provider. Spoken replies are optional.
+          6. Close the console or press Ctrl+C to stop JARVIS.
+
+          Safety notes:
+          - The server binds to 127.0.0.1 only; do not expose it to the internet.
+          - File copy, quarantine, repair, uninstall, and process-close actions require a separate explicit confirmation.
+          - JARVIS does not automatically delete files or run arbitrary shell commands.
+          - Local saved memories are stored in an unencrypted SQLite file under your user profile. Do not save secrets.
+          - This build is not code-signed. Verify the SHA-256 checksum published with the artifact before running it.
+          - This is a portable build artifact, not an installer. Keep the complete folder together.
+          '@ | Set-Content -Encoding UTF8 dist/JARVIS/README.txt
+
+      - name: Create ZIP and checksum
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/JARVIS/* -DestinationPath dist/JARVIS-Windows-x64.zip -Force
+          $hash = (Get-FileHash dist/JARVIS-Windows-x64.zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  JARVIS-Windows-x64.zip" | Set-Content -Encoding ascii dist/JARVIS-Windows-x64.sha256
+
+      - name: Upload portable build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: JARVIS-Windows-x64
+          path: |
+            dist/JARVIS-Windows-x64.zip
+            dist/JARVIS-Windows-x64.sha256
+          if-no-files-found: error
+          retention-days: 14
