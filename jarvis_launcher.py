@@ -21,9 +21,18 @@ def main() -> int:
         from pathlib import Path
         from computer_control import tool_schemas
 
-        static_index = Path(app.__file__).resolve().parent / "static" / "index.html"
-        if not static_index.is_file():
+        # `app` is the FastAPI instance, not the Python module. In a PyInstaller
+        # onedir build, bundled data normally lives under sys._MEIPASS.
+        candidates = []
+        bundle_dir = getattr(sys, "_MEIPASS", None)
+        if bundle_dir:
+            candidates.append(Path(bundle_dir) / "static" / "index.html")
+        candidates.append(Path(__file__).resolve().parent / "static" / "index.html")
+        candidates.append(Path(sys.executable).resolve().parent / "static" / "index.html")
+        static_index = next((path for path in candidates if path.is_file()), None)
+        if static_index is None:
             print("JARVIS package self-test failed: static/index.html is missing.")
+            print("Checked: " + "; ".join(str(path) for path in candidates))
             return 3
         route_paths = {getattr(route, "path", "") for route in app.routes}
         required_routes = {"/", "/api/health", "/api/status", "/api/system", "/api/chat"}
