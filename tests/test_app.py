@@ -16,6 +16,9 @@ def test_home_page_exposes_optional_push_to_talk_and_spoken_replies():
     response = client.get("/")
     assert response.status_code == 200
     assert 'id="voiceInput"' in response.text
+    assert 'id="liveToggle"' in response.text
+    assert "async function sendMessage(rawText)" in response.text
+    assert "recognized speech is sent automatically" in response.text
     assert 'id="speakToggle"' in response.text
     assert "SpeechRecognition" in response.text
     assert "speechSynthesis" in response.text
