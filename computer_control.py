@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import getpass
 import json
 import os
+import secrets
 import subprocess
 import webbrowser
 from pathlib import Path
@@ -10,13 +13,10 @@ from urllib.parse import urlparse
 
 WORKSPACE = (Path.home() / "Documents" / "JARVISWorkspace").resolve()
 WORKSPACE.mkdir(parents=True, exist_ok=True)
-
-# Deliberately narrow first release: no arbitrary shell, deletion, registry, or admin actions.
-ALLOWED_APPS = {
-    "notepad": ["notepad.exe"],
-    "calculator": ["calc.exe"],
-    "explorer": ["explorer.exe"],
-}
+ALLOWED_APPS = {"notepad": ["notepad.exe"], "calculator": ["calc.exe"], "explorer": ["explorer.exe"]}
+_PENDING_ACTIONS: dict[str, dict[str, str]] = {}
+_PROTECTED_PROCESSES = {"system", "registry", "smss", "csrss", "wininit", "services", "lsass", "svchost", "winlogon", "explorer", "dwm", "fontdrvhost", "spoolsv", "securityhealthservice", "msmpeng", "antimalwareserviceexecutable"}
+MAX_CLIPBOARD_CHARS = 20_000
 
 
 def _workspace_path(relative_path: str) -> Path:
@@ -26,86 +26,98 @@ def _workspace_path(relative_path: str) -> Path:
     return candidate
 
 
+def _require_windows() -> None:
+    if os.name != "nt":
+        raise RuntimeError("This action is supported on Windows only.")
+
+
+def _powershell(script: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+    _require_windows()
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    return subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                          capture_output=True, text=True, timeout=timeout, check=False,
+                          creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+
+
+def _stage(kind: str, label: str, value: str = "") -> str:
+    action_id = secrets.token_hex(4)
+    _PENDING_ACTIONS[action_id] = {"kind": kind, "label": label, "value": value}
+    return json.dumps({"ok": True, "status": "awaiting_confirmation", "action_id": action_id,
+        "action": label, "message": "No change has been made. Explain this exact action and ask for explicit user confirmation before calling confirm_pending_action."}, ensure_ascii=False)
+
+
 def tool_schemas() -> list[dict[str, Any]]:
+    def s(name: str, description: str, properties: dict[str, Any], required: list[str]) -> dict[str, Any]:
+        return {"type": "function", "name": name, "description": description,
+                "parameters": {"type": "object", "properties": properties, "required": required, "additionalProperties": False}, "strict": True}
     return [
-        {
-            "type": "function",
-            "name": "open_app",
-            "description": "Open one of the approved Windows applications.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "app": {"type": "string", "enum": sorted(ALLOWED_APPS)}
-                },
-                "required": ["app"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-        {
-            "type": "function",
-            "name": "open_url",
-            "description": "Open a normal HTTP or HTTPS website in the default browser.",
-            "parameters": {
-                "type": "object",
-                "properties": {"url": {"type": "string"}},
-                "required": ["url"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-        {
-            "type": "function",
-            "name": "list_workspace",
-            "description": "List files and folders inside the JARVISWorkspace folder.",
-            "parameters": {
-                "type": "object",
-                "properties": {"relative_path": {"type": "string"}},
-                "required": ["relative_path"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-        {
-            "type": "function",
-            "name": "read_workspace_file",
-            "description": "Read a UTF-8 text file inside the JARVISWorkspace folder (maximum 200 KB).",
-            "parameters": {
-                "type": "object",
-                "properties": {"relative_path": {"type": "string"}},
-                "required": ["relative_path"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-        {
-            "type": "function",
-            "name": "write_workspace_file",
-            "description": "Create or replace a UTF-8 text file inside JARVISWorkspace. Only do this when the user clearly requested the file change.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "relative_path": {"type": "string"},
-                    "content": {"type": "string"},
-                },
-                "required": ["relative_path", "content"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-        {
-            "type": "function",
-            "name": "create_workspace_folder",
-            "description": "Create a folder inside JARVISWorkspace.",
-            "parameters": {
-                "type": "object",
-                "properties": {"relative_path": {"type": "string"}},
-                "required": ["relative_path"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
+        s("open_app", "Open Notepad, Calculator, or File Explorer.", {"app": {"type": "string", "enum": sorted(ALLOWED_APPS)}}, ["app"]),
+        s("open_url", "Open an HTTP or HTTPS website in the default browser.", {"url": {"type": "string"}}, ["url"]),
+        s("open_path", "Open an existing local file or folder by absolute path on any available Windows drive (C:, D:, etc). Never execute the file.", {"path": {"type": "string"}}, ["path"]),
+        s("list_drives", "List available Windows drives and capacity.", {}, []),
+        s("copy_to_clipboard", "Copy plain text, a command string, or a file path to the Windows clipboard; this does not execute it.", {"text": {"type": "string"}}, ["text"]),
+        s("list_processes", "Read-only list of running processes sorted by RAM use.", {"limit": {"type": "integer"}}, ["limit"]),
+        s("list_installed_apps", "List installed apps from Windows registry without uninstalling anything.", {}, []),
+        s("defender_quick_scan", "Start Microsoft Defender quick scan; do not manually delete files. Defender handles detections according to Windows Security policy.", {}, []),
+        s("request_system_repair", "Stage DISM image repair and SFC scan; requires explicit confirmation and may need Administrator.", {}, []),
+        s("request_uninstall", "Stage uninstall of one exact app name via winget. Never remove Windows/security components, drivers, or shared runtimes.", {"app_name": {"type": "string"}}, ["app_name"]),
+        s("request_stop_process", "Stage a graceful close request for a user-selected process to reduce load while gaming. Never force-kill or target Windows/security processes.", {"process_name": {"type": "string"}}, ["process_name"]),
+        s("confirm_pending_action", "Execute a staged disruptive action only if the latest user message explicitly confirms that exact action.", {"action_id": {"type": "string"}, "confirmed": {"type": "boolean"}}, ["action_id", "confirmed"]),
+        s("list_workspace", "List files and folders inside JARVISWorkspace.", {"relative_path": {"type": "string"}}, ["relative_path"]),
+        s("read_workspace_file", "Read a UTF-8 text file inside JARVISWorkspace (maximum 200 KB).", {"relative_path": {"type": "string"}}, ["relative_path"]),
+        s("write_workspace_file", "Create or replace a UTF-8 text file inside JARVISWorkspace only when explicitly requested.", {"relative_path": {"type": "string"}, "content": {"type": "string"}}, ["relative_path", "content"]),
+        s("create_workspace_folder", "Create a folder inside JARVISWorkspace.", {"relative_path": {"type": "string"}}, ["relative_path"]),
     ]
+
+
+def _list_drives() -> str:
+    _require_windows()
+    import psutil
+    rows = []
+    for part in psutil.disk_partitions(all=False):
+        if len(part.device) < 2 or part.device[1] != ":":
+            continue
+        try:
+            u = psutil.disk_usage(part.mountpoint)
+            rows.append({"drive": part.device, "mountpoint": part.mountpoint, "total_gb": round(u.total / 1024**3, 1), "free_gb": round(u.free / 1024**3, 1)})
+        except (PermissionError, OSError):
+            rows.append({"drive": part.device, "mountpoint": part.mountpoint, "capacity": "unavailable"})
+    return json.dumps({"ok": True, "drives": rows}, ensure_ascii=False)
+
+
+def _list_processes(limit: int) -> str:
+    import psutil
+    limit = max(1, min(int(limit), 40))
+    rows = []
+    for proc in psutil.process_iter(["pid", "name", "username", "memory_info", "status"]):
+        try:
+            i = proc.info
+            mem = i.get("memory_info")
+            rows.append({"pid": i.get("pid"), "name": i.get("name") or "unknown", "user": i.get("username") or "unknown",
+                         "status": i.get("status") or "unknown", "ram_mb": round(mem.rss / 1024**2, 1) if mem else 0})
+        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+    rows.sort(key=lambda x: x["ram_mb"], reverse=True)
+    return json.dumps({"ok": True, "processes": rows[:limit], "note": "Read-only. Actual RAM is freed by closing appropriate apps, not by changing displayed metrics."}, ensure_ascii=False)
+
+
+def _list_installed_apps() -> str:
+    script = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$paths = @('HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*','HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*')
+$items = foreach ($path in $paths) { Get-ItemProperty $path | Where-Object { $_.DisplayName } | ForEach-Object { [pscustomobject]@{name=$_.DisplayName;publisher=$_.Publisher;version=$_.DisplayVersion} } }
+$items | Sort-Object name -Unique | ConvertTo-Json -Depth 3 -Compress
+"""
+    r = _powershell(script, 30)
+    if r.returncode:
+        raise RuntimeError((r.stderr or "Could not read installed applications.")[:400])
+    try:
+        apps = json.loads(r.stdout.strip() or "[]")
+    except json.JSONDecodeError:
+        apps = []
+    if isinstance(apps, dict):
+        apps = [apps]
+    return json.dumps({"ok": True, "apps": apps[:300], "note": "Inventory only; removal requires a separate explicit confirmation."}, ensure_ascii=False)
 
 
 def execute_tool(name: str, arguments_json: str) -> str:
@@ -113,17 +125,13 @@ def execute_tool(name: str, arguments_json: str) -> str:
         args = json.loads(arguments_json)
         if not isinstance(args, dict):
             raise ValueError("Arguments must be an object.")
-
         if name == "open_app":
-            app_name = args["app"]
-            command = ALLOWED_APPS.get(app_name)
-            if not command:
-                raise ValueError("That application is not in the approved app list.")
-            if os.name != "nt":
-                raise RuntimeError("Computer-control tools are currently supported on Windows only.")
-            subprocess.Popen(command, shell=False, close_fds=True)
-            return json.dumps({"ok": True, "opened": app_name})
-
+            app = args["app"]
+            if app not in ALLOWED_APPS:
+                raise ValueError("That application is not approved.")
+            _require_windows()
+            subprocess.Popen(ALLOWED_APPS[app], shell=False, close_fds=True)
+            return json.dumps({"ok": True, "opened": app})
         if name == "open_url":
             url = args["url"].strip()
             parsed = urlparse(url)
@@ -131,44 +139,137 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 raise ValueError("Only complete http:// or https:// URLs are allowed.")
             webbrowser.open(url, new=2)
             return json.dumps({"ok": True, "opened_url": url})
-
+        if name == "open_path":
+            _require_windows()
+            raw = args["path"].strip()
+            path = Path(raw)
+            if not path.is_absolute() or not path.exists():
+                raise ValueError("Provide an existing absolute path, such as C:\\Users\\... or D:\\... .")
+            if path.is_file():
+                os.startfile(str(path))
+            else:
+                subprocess.Popen(["explorer.exe", str(path)], shell=False, close_fds=True)
+            return json.dumps({"ok": True, "opened_path": str(path)}, ensure_ascii=False)
+        if name == "list_drives":
+            return _list_drives()
+        if name == "copy_to_clipboard":
+            value = args["text"]
+            if len(value) > MAX_CLIPBOARD_CHARS:
+                raise ValueError(f"Clipboard text exceeds {MAX_CLIPBOARD_CHARS} characters.")
+            script = "$value = [Console]::In.ReadToEnd(); Set-Clipboard -Value $value"
+            _require_windows()
+            encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+            r = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+                input=value, capture_output=True, text=True, timeout=15, check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            if r.returncode:
+                raise RuntimeError((r.stderr or "Clipboard write failed.")[:300])
+            return json.dumps({"ok": True, "copied_characters": len(value), "executed": False})
+        if name == "list_processes":
+            return _list_processes(args["limit"])
+        if name == "list_installed_apps":
+            return _list_installed_apps()
+        if name == "defender_quick_scan":
+            r = _powershell("Start-MpScan -ScanType QuickScan; Get-MpComputerStatus | Select-Object AntivirusEnabled,RealTimeProtectionEnabled,AntivirusSignatureLastUpdated | ConvertTo-Json -Compress", 180)
+            if r.returncode:
+                return json.dumps({"ok": False, "error": (r.stderr or r.stdout or "Defender scan could not start.")[:500], "hint": "Check Windows Security and permissions. No files were manually deleted."}, ensure_ascii=False)
+            return json.dumps({"ok": True, "scan": "quick scan command completed", "defender_status": r.stdout.strip(), "note": "Review Windows Security > Protection history. Defender applies its configured remediation policy."}, ensure_ascii=False)
+        if name == "request_system_repair":
+            return _stage("repair", "Run DISM /Online /Cleanup-Image /RestoreHealth followed by sfc /scannow; may require Administrator")
+        if name == "request_uninstall":
+            app = args["app_name"].strip()
+            if not app or len(app) > 160:
+                raise ValueError("Provide the exact installed application display name.")
+            protected = ("microsoft defender", "windows security", "security update", "driver", "visual c++", ".net runtime", "webview2")
+            if any(term in app.casefold() for term in protected):
+                raise ValueError("This matches a protected security, driver, or shared-runtime category.")
+            return _stage("uninstall", f"Uninstall the exact application named: {app}", app)
+        if name == "request_stop_process":
+            raw = args["process_name"].strip()
+            if not raw or len(raw) > 100 or any(c in raw for c in "\\/;&|<>$" + chr(96)):
+                raise ValueError("Provide a simple exact process name, such as gamebar.exe.")
+            proc_name = Path(raw).name.casefold().removesuffix(".exe")
+            if proc_name in _PROTECTED_PROCESSES:
+                raise ValueError("That process is protected and cannot be stopped by JARVIS.")
+            return _stage("stop_process", f"Request graceful close of user-selected process: {proc_name}.exe", proc_name)
+        if name == "confirm_pending_action":
+            action_id = args["action_id"]
+            if args["confirmed"] is not True:
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": True, "cancelled": True, "message": "Pending action cancelled."})
+            action = _PENDING_ACTIONS.get(action_id)
+            if not action:
+                raise ValueError("Action ID missing or expired; stage it again after explicit confirmation.")
+            _require_windows()
+            if action["kind"] == "repair":
+                d = subprocess.run(["DISM.exe", "/Online", "/Cleanup-Image", "/RestoreHealth"], capture_output=True, text=True, timeout=1800, check=False)
+                if d.returncode:
+                    raise RuntimeError(f"DISM failed with exit code {d.returncode}; check logs and Administrator permissions.")
+                s = subprocess.run(["sfc.exe", "/scannow"], capture_output=True, text=True, timeout=1800, check=False)
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": s.returncode == 0, "dism_exit_code": d.returncode, "sfc_exit_code": s.returncode, "sfc_output": s.stdout[-2000:]}, ensure_ascii=False)
+            if action["kind"] == "uninstall":
+                r = subprocess.run(["winget.exe", "uninstall", "--name", action["value"], "--exact", "--accept-source-agreements"], capture_output=True, text=True, timeout=600, check=False)
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": r.returncode == 0, "exit_code": r.returncode, "output": (r.stdout + "\n" + r.stderr)[-2000:], "note": "Success is reported only for exit code 0."}, ensure_ascii=False)
+            if action["kind"] == "stop_process":
+                import ctypes
+                from ctypes import wintypes
+                import psutil
+                target = action["value"]
+                matches = []
+                for p in psutil.process_iter(["pid", "name", "username"]):
+                    try:
+                        if (p.info.get("name") or "").casefold().removesuffix(".exe") == target and (not p.info.get("username") or p.info["username"].casefold() == getpass.getuser().casefold()):
+                            matches.append(p)
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                if not matches:
+                    _PENDING_ACTIONS.pop(action_id, None)
+                    return json.dumps({"ok": True, "close_requests_sent": 0, "message": "No matching process owned by the current user."})
+                sent = 0
+                def callback(hwnd: int, _lp: int) -> bool:
+                    nonlocal sent
+                    pid = wintypes.DWORD()
+                    ctypes.windll.user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+                    if any(p.pid == pid.value for p in matches):
+                        ctypes.windll.user32.PostMessageW(hwnd, 0x0010, 0, 0)
+                        sent += 1
+                    return True
+                enum_proc = ctypes.WINFUNCTYPE(ctypes.c_bool, wintypes.HWND, wintypes.LPARAM)(callback)
+                ctypes.windll.user32.EnumWindows(enum_proc, 0)
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": True, "close_requests_sent": sent, "matched_processes": len(matches), "note": "Graceful close requested; unsaved-work prompts may remain. No force-kill was used."})
+            raise ValueError("Unsupported pending action type.")
         if name == "list_workspace":
             folder = _workspace_path(args["relative_path"])
             if not folder.exists():
                 return json.dumps({"ok": True, "items": [], "note": "Folder does not exist."})
             if not folder.is_dir():
                 raise ValueError("The requested path is not a folder.")
-            items = [
-                {"name": item.name, "type": "folder" if item.is_dir() else "file"}
-                for item in sorted(folder.iterdir(), key=lambda p: p.name.lower())
-            ][:200]
+            items = [{"name": p.name, "type": "folder" if p.is_dir() else "file"} for p in sorted(folder.iterdir(), key=lambda p: p.name.lower())][:200]
             return json.dumps({"ok": True, "items": items})
-
         if name == "read_workspace_file":
             path = _workspace_path(args["relative_path"])
             if not path.is_file():
                 raise ValueError("File not found in JARVISWorkspace.")
             if path.stat().st_size > 200_000:
-                raise ValueError("File is larger than the 200 KB read limit.")
+                raise ValueError("File exceeds the 200 KB read limit.")
             return json.dumps({"ok": True, "relative_path": args["relative_path"], "content": path.read_text(encoding="utf-8")})
-
         if name == "write_workspace_file":
-            relative_path = args["relative_path"]
-            path = _workspace_path(relative_path)
+            path = _workspace_path(args["relative_path"])
+            content = args["content"]
             if not path.name:
                 raise ValueError("A file name is required.")
-            content = args["content"]
             if len(content.encode("utf-8")) > 200_000:
-                raise ValueError("File content exceeds the 200 KB write limit.")
+                raise ValueError("Content exceeds the 200 KB write limit.")
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
-            return json.dumps({"ok": True, "written": relative_path, "bytes": len(content.encode("utf-8"))})
-
+            return json.dumps({"ok": True, "written": args["relative_path"], "bytes": len(content.encode("utf-8"))})
         if name == "create_workspace_folder":
             path = _workspace_path(args["relative_path"])
             path.mkdir(parents=True, exist_ok=True)
             return json.dumps({"ok": True, "created_folder": args["relative_path"]})
-
         raise ValueError("Unknown or unsupported computer-control tool.")
     except Exception as exc:
-        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"})
+        return json.dumps({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
