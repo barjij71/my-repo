@@ -8,7 +8,7 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 - A responsive sci-fi Command Center dashboard inspired by the supplied reference image, with navigation, AI-core animation, activity feed, quick commands, and session timeline
 - A browser chat interface with in-memory conversation history
 - User-approved persistent fact memory stored locally in SQLite, with search/list and exact-ID forgetting; secret-looking values are rejected by basic pattern checks
-- Optional push-to-talk dictation and spoken replies using browser speech APIs; microphone capture is user-triggered, and browser speech recognition may use an online provider. Voice recognition is not submitted to JARVIS until the user reviews the text and presses Execute.
+- Optional push-to-talk dictation, spoken replies, and hands-free live voice conversation using browser speech APIs. Live mode is explicitly started/stopped by the user, automatically submits recognized speech, and speaks replies; browser speech recognition may use an online provider. High-impact actions still require a separate explicit confirmation.
 - A FastAPI API with bearer-token authentication
 - Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; run a dependency-free static triage on one file (SHA-256, file-type hint, and suspicious-string indicators, without execution or upload), and scan selected files/folders on demand with resource-bounded ClamAV (low process priority, PUA detection, file-count/size/recursion/timeout limits, no automatic signature update), with official ClamAV/ESET options if no scanner is found; stage moving one exact reviewed file to reversible quarantine only after explicit confirmation, verifying its SHA-256 first; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
@@ -28,7 +28,8 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 2. Run `.\start.ps1`.
 3. On first launch, enter your OpenAI API key at the hidden prompt. It is saved in Windows Credential Manager, not in the repository.
 4. Copy the JARVIS local access token printed by the launcher into the browser page and select **Connect**.
-5. The local interface opens at http://127.0.0.1:8765.
+5. To chat hands-free, select **LIVE OFF** once to turn on live conversation, then allow microphone access in the browser. JARVIS automatically sends recognized speech and speaks replies. Select **LIVE ON** to stop. Browser speech recognition may send audio to its provider; use this mode only if comfortable with that privacy trade-off.
+6. The local interface opens at http://127.0.0.1:8765.
 
 The launcher creates a project-local virtual environment and installs the required packages. It does not commit secrets. The access token is a secret: keep it private.
 
