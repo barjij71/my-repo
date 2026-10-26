@@ -4,9 +4,10 @@ A Windows-first personal assistant with a local FastAPI web interface and OpenAI
 
 ## Current status
 
-The current feature branch contains a first dashboard and restricted computer-control prototype. It includes:
+The main branch contains the initial Windows dashboard and restricted computer-control implementation. It includes:
 - A responsive sci-fi Command Center dashboard inspired by the supplied reference image, with navigation, AI-core animation, activity feed, quick commands, and session timeline
 - A browser chat interface with in-memory conversation history
+- Optional push-to-talk dictation and spoken replies using browser speech APIs; microphone capture is user-triggered, and browser speech recognition may use an online provider. Voice recognition is not submitted to JARVIS until the user reviews the text and presses Execute.
 - A FastAPI API with bearer-token authentication
 - Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; run a dependency-free static triage on one file (SHA-256, file-type hint, and suspicious-string indicators, without execution or upload), and scan selected files/folders on demand with resource-bounded ClamAV (low process priority, PUA detection, file-count/size/recursion/timeout limits, no automatic signature update), with official ClamAV/ESET options if no scanner is found; stage moving one exact reviewed file to reversible quarantine only after explicit confirmation, verifying its SHA-256 first; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
@@ -53,7 +54,7 @@ GitHub Actions runs the test suite on Windows and Ubuntu for pushes to `main` an
 - API key and access token are stored via Windows Credential Manager.
 - The local web server binds to loopback by default.
 - Provider exceptions are sanitized before returning errors to the browser.
-- Arbitrary shell execution, direct command execution from the clipboard, force-killing processes, manual virus-file deletion, and arbitrary file editing outside `Documents\\JARVISWorkspace` are not enabled. Repair/uninstall/process-close actions are staged and require explicit confirmation. System repair may require launching JARVIS as Administrator. Defender scan/remediation is managed by Windows Security; review Protection history. Closing selected applications can free RAM, but there is no unsafe 'RAM cleaner' or automatic mass process killing. Voice capture, durable memory, general mouse/keyboard automation, screenshot capture, and full browser automation are not implemented yet.
+- Arbitrary shell execution, direct command execution from the clipboard, force-killing processes, manual virus-file deletion, and arbitrary file editing outside `Documents\\JARVISWorkspace` are not enabled. Repair/uninstall/process-close actions are staged and require explicit confirmation. System repair may require launching JARVIS as Administrator. Defender scan/remediation is managed by Windows Security; review Protection history. Closing selected applications can free RAM, but there is no unsafe 'RAM cleaner' or automatic mass process killing. Persistent conversation memory, reminders/tasks, general mouse/keyboard automation, screenshot understanding, and full browser automation are not implemented yet. Voice input/output is optional and depends on browser support; no background listening is used.
 - Do not use this starter build to run untrusted code.
 
 
