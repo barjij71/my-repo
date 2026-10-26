@@ -92,6 +92,35 @@ def status(authorization: str | None = Header(default=None)) -> dict[str, str | 
     }
 
 
+@app.get("/api/system")
+def system_metrics(authorization: str | None = Header(default=None)) -> dict[str, int | str | None]:
+    """Return real local system metrics; never expose this endpoint without the local token."""
+    verify_token(authorization)
+    try:
+        import psutil
+
+        root = Path.home().anchor or str(Path.home())
+        memory = psutil.virtual_memory()
+        disk = psutil.disk_usage(root)
+        uptime_seconds = max(0, int(__import__("time").time() - psutil.boot_time()))
+        hours, remainder = divmod(uptime_seconds, 3600)
+        minutes = remainder // 60
+        uptime = f"{hours}h {minutes}m"
+        return {
+            "cpu_percent": round(psutil.cpu_percent(interval=0.1)),
+            "memory_percent": round(memory.percent),
+            "disk_percent": round(disk.percent),
+            "uptime": uptime,
+        }
+    except Exception:
+        return {
+            "cpu_percent": -1,
+            "memory_percent": -1,
+            "disk_percent": -1,
+            "uptime": "Unavailable on this system",
+        }
+
+
 @app.post("/api/chat")
 def chat(
     req: ChatRequest,
