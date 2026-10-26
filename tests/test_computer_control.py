@@ -52,7 +52,7 @@ def test_write_rejects_path_traversal(tmp_path, monkeypatch):
 def test_tool_schemas_include_maintenance_capabilities():
     names = {tool["name"] for tool in control.tool_schemas()}
     assert {"open_path", "list_drives", "copy_to_clipboard", "list_processes",
-            "list_installed_apps", "scan_with_clamav", "request_system_repair",
+            "list_installed_apps", "scan_with_clamav", "request_quarantine_file", "request_system_repair",
             "request_uninstall", "request_stop_process", "confirm_pending_action"} <= names
 
 
@@ -131,3 +131,21 @@ def test_cross_drive_copy_requires_windows_and_is_exposed():
     if __import__("os").name != "nt":
         assert result["ok"] is False
         assert "Windows" in result["error"]
+
+
+
+def test_quarantine_requires_existing_file_and_windows(tmp_path, monkeypatch):
+    import os
+    result = json.loads(control.execute_tool("request_quarantine_file", json.dumps({"path": str(tmp_path / "missing.exe")})))
+    assert result["ok"] is False
+    if os.name != "nt":
+        result = json.loads(control.execute_tool("request_quarantine_file", json.dumps({"path": str(tmp_path)})))
+        assert result["ok"] is False
+        assert "Windows" in result["error"]
+
+
+def test_clamav_scan_is_resource_bounded_and_never_auto_remediates():
+    schema = next(tool for tool in control.tool_schemas() if tool["name"] == "scan_with_clamav")
+    assert "resource-bounded" in schema["description"]
+    assert "Never deletes or quarantines" in schema["description"]
+    assert "request_quarantine_file" in {tool["name"] for tool in control.tool_schemas()}
