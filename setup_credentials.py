@@ -22,12 +22,14 @@ def main() -> int:
         return 2
 
     try:
+        reset_api_key = "--reset-api-key" in sys.argv[1:]
         current_key = keyring.get_password(SERVICE, API_KEY_NAME)
-        if not current_key:
-            print("OpenAI API key setup (input is hidden; key is stored in Windows Credential Manager).")
-            key = getpass.getpass("OpenAI API key: ").strip()
+        if reset_api_key or not current_key:
+            prompt = "Replacement OpenAI API key" if current_key else "OpenAI API key"
+            print(f"{prompt} setup (input is hidden; key is stored in Windows Credential Manager).")
+            key = getpass.getpass(f"{prompt}: ").strip()
             if not key:
-                print("No key entered; setup cancelled.", file=sys.stderr)
+                print("No key entered; existing credentials were left unchanged.", file=sys.stderr)
                 return 1
             keyring.set_password(SERVICE, API_KEY_NAME, key)
             del key
