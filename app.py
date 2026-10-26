@@ -31,6 +31,21 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
 
 
+def get_api_key() -> str | None:
+    """Read the key from the process environment or Windows Credential Manager."""
+    value = os.environ.get("OPENAI_API_KEY", "").strip()
+    if value:
+        return value
+    if os.name == "nt":
+        try:
+            import keyring
+
+            return keyring.get_password("JARVIS", "OPENAI_API_KEY")
+        except Exception:
+            return None
+    return None
+
+
 def verify_token(authorization: str | None) -> None:
     if not APP_TOKEN:
         raise HTTPException(
@@ -56,7 +71,7 @@ def health() -> dict[str, str]:
 def status(authorization: str | None = Header(default=None)) -> dict[str, str | bool]:
     verify_token(authorization)
     return {
-        "ready": bool(os.environ.get("OPENAI_API_KEY")),
+        "ready": bool(get_api_key()),
         "model": MODEL,
     }
 
@@ -67,7 +82,8 @@ def chat(
     authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
     verify_token(authorization)
-    if not os.environ.get("OPENAI_API_KEY"):
+    api_key = get_api_key()
+    if not api_key:
         raise HTTPException(
             status_code=503,
             detail="OPENAI_API_KEY is not configured in the local environment.",
@@ -79,7 +95,7 @@ def chat(
 
     history.append({"role": "user", "content": req.message})
     try:
-        client = OpenAI()
+        client = OpenAI(api_key=api_key)
         response = client.responses.create(
             model=MODEL,
             instructions=(
