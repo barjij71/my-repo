@@ -56,6 +56,7 @@ def tool_schemas() -> list[dict[str, Any]]:
         s("open_path", "Open an existing local file or folder by absolute path on any available Windows drive (C:, D:, etc). Never execute the file.", {"path": {"type": "string"}}, ["path"]),
         s("list_drives", "List available Windows drives and capacity.", {}, []),
         s("copy_to_clipboard", "Copy plain text, a command string, or a file path to the Windows clipboard; this does not execute it.", {"text": {"type": "string"}}, ["text"]),
+        s("request_copy_file", "Stage copying a selected file between any accessible Windows drives using absolute source and destination paths. Never overwrite an existing destination; requires explicit confirmation.", {"source_path": {"type": "string"}, "destination_path": {"type": "string"}}, ["source_path", "destination_path"]),
         s("list_processes", "Read-only list of running processes sorted by RAM use.", {"limit": {"type": "integer"}}, ["limit"]),
         s("list_installed_apps", "List installed apps from Windows registry without uninstalling anything.", {}, []),
         s("defender_quick_scan", "Start Microsoft Defender quick scan; do not manually delete files. Defender handles detections according to Windows Security policy.", {}, []),
@@ -167,6 +168,19 @@ def execute_tool(name: str, arguments_json: str) -> str:
             if r.returncode:
                 raise RuntimeError((r.stderr or "Clipboard write failed.")[:300])
             return json.dumps({"ok": True, "copied_characters": len(value), "executed": False})
+        if name == "request_copy_file":
+            _require_windows()
+            source = Path(args["source_path"].strip())
+            destination = Path(args["destination_path"].strip())
+            if not source.is_absolute() or not source.is_file():
+                raise ValueError("Source must be an existing absolute file path.")
+            if not destination.is_absolute() or not destination.name:
+                raise ValueError("Destination must be an absolute file path including its file name.")
+            if not destination.parent.is_dir():
+                raise ValueError("Destination folder must already exist.")
+            if destination.exists():
+                raise ValueError("Destination already exists; JARVIS will not overwrite files.")
+            return _stage("copy_file", f"Copy file '{source}' to '{destination}' without overwriting anything", json.dumps({"source": str(source), "destination": str(destination)}))
         if name == "list_processes":
             return _list_processes(args["limit"])
         if name == "list_installed_apps":
@@ -203,6 +217,16 @@ def execute_tool(name: str, arguments_json: str) -> str:
             if not action:
                 raise ValueError("Action ID missing or expired; stage it again after explicit confirmation.")
             _require_windows()
+            if action["kind"] == "copy_file":
+                import shutil
+                details = json.loads(action["value"])
+                source = Path(details["source"])
+                destination = Path(details["destination"])
+                if not source.is_file() or not destination.parent.is_dir() or destination.exists():
+                    raise ValueError("Source/destination changed after review; no file was copied. Check paths and stage again.")
+                shutil.copy2(source, destination)
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": True, "copied_from": str(source), "copied_to": str(destination), "bytes": destination.stat().st_size}, ensure_ascii=False)
             if action["kind"] == "repair":
                 d = subprocess.run(["DISM.exe", "/Online", "/Cleanup-Image", "/RestoreHealth"], capture_output=True, text=True, timeout=1800, check=False)
                 if d.returncode:
