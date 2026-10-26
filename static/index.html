@@ -64,11 +64,11 @@ main{min-width:0;padding:14px 16px 95px}.topbar{display:flex;align-items:center;
   <div class="error" id="error" role="alert"></div>
 </main>
 </div>
-<div class="bottom-bar"><div class="bottom-meta"><span>● <span id="bottomConn">OFFLINE</span></span><span>⌁ Local-first</span></div><form id="form" class="composer"><textarea id="message" placeholder="Talk to JARVIS — describe a task… (Ctrl+Enter to send)" maxlength="6000" required aria-label="Command for JARVIS"></textarea><div class="composer-controls"><button id="voiceInput" class="voice-button" type="button" title="Push-to-talk. Browser speech recognition may use an online service.">🎙 MIC</button><button id="speakToggle" class="voice-button" type="button" aria-pressed="false" title="Toggle spoken replies; uses voices installed in your browser/Windows.">🔊 VOICE OFF</button><button id="send" class="send" type="submit" disabled>EXECUTE ↗</button></div></form><div class="bottom-meta right" style="justify-content:flex-end"><span>Emergency stop: disconnect token</span></div></div>
+<div class="bottom-bar"><div class="bottom-meta"><span>● <span id="bottomConn">OFFLINE</span></span><span>⌁ Local-first</span></div><form id="form" class="composer"><textarea id="message" placeholder="Talk to JARVIS — describe a task… (Ctrl+Enter to send)" maxlength="6000" required aria-label="Command for JARVIS"></textarea><div class="composer-controls"><button id="voiceInput" class="voice-button" type="button" title="Push-to-talk. Browser speech recognition may use an online service.">🎙 MIC</button><button id="liveToggle" class="voice-button" type="button" aria-pressed="false" title="Start or stop hands-free live voice conversation. Speech recognition may use an online provider.">🔴 LIVE OFF</button><button id="speakToggle" class="voice-button" type="button" aria-pressed="false" title="Toggle spoken replies; uses voices installed in your browser/Windows.">🔊 VOICE OFF</button><button id="send" class="send" type="submit" disabled>EXECUTE ↗</button></div></form><div class="bottom-meta right" style="justify-content:flex-end"><span>Emergency stop: disconnect token</span></div></div>
 <script>
 (() => {
- const $=id=>document.getElementById(id);let token='',history=[],busy=false,connected=false,started=Date.now(),actions=[],recognition=null,speechEnabled=false;
- const error=$('error'),send=$('send'),message=$('message'),voiceInput=$('voiceInput'),speakToggle=$('speakToggle');
+ const $=id=>document.getElementById(id);let token='',history=[],busy=false,connected=false,started=Date.now(),actions=[],recognition=null,speechEnabled=false,liveMode=false,recognitionSupported=false;
+ const error=$('error'),send=$('send'),message=$('message'),voiceInput=$('voiceInput'),speakToggle=$('speakToggle'),liveToggle=$('liveToggle');
  const descriptions={
  core:['AI Core','The current assistant connection and available tools.','This build connects to the configured OpenAI model and restricted local tools. Optional push-to-talk and spoken replies depend on browser support; screen understanding and general mouse/keyboard control are not yet implemented.'],
  agents:['Agents','Task routing and capability status.','The labels here describe capability groups in this build, not separate autonomous processes. Task and file tools are available after connecting.'],
@@ -81,26 +81,67 @@ main{min-width:0;padding:14px 16px 95px}.topbar{display:flex;align-items:center;
  function showError(t=''){error.textContent=t}
  function speakReply(text){
   if(!speechEnabled||!('speechSynthesis' in window))return;
+  if(recognition){try{recognition.stop()}catch(_){}}
   window.speechSynthesis.cancel();
   const utterance=new SpeechSynthesisUtterance(String(text).slice(0,4000));
   utterance.lang='ar-MA';
   const voices=window.speechSynthesis.getVoices();
   utterance.voice=voices.find(v=>/^ar(-|$)/i.test(v.lang))||null;
+  utterance.onend=()=>{if(liveMode&&!busy)startListening()};
+  utterance.onerror=()=>{if(liveMode&&!busy)startListening()};
   window.speechSynthesis.speak(utterance);
  }
+ const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+ recognitionSupported=!!SpeechRecognition;
+ function startListening(){
+  if(!liveMode||!connected||busy||recognition||!SpeechRecognition)return;
+  try{
+   const instance=new SpeechRecognition();
+   recognition=instance;instance.lang='ar-MA';instance.continuous=false;instance.interimResults=false;instance.maxAlternatives=1;
+   instance.onresult=e=>{
+    const result=e.results&&e.results[e.results.length-1];
+    const transcript=result&&result[0]?result[0].transcript.trim():'';
+    if(transcript&&liveMode&&!busy){message.value=transcript;instance.stop();sendMessage(transcript)}
+   };
+   instance.onerror=e=>{
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){liveMode=false;updateLiveUI();showError('Microphone permission denied or speech service unavailable. Allow microphone access in the browser, then try LIVE again.')}
+    else if(e.error!=='no-speech'&&e.error!=='aborted')showError('Live speech error: '+(e.error||'unavailable'));
+   };
+   instance.onend=()=>{
+    if(recognition===instance)recognition=null;
+    if(liveMode&&!busy&&!(speechEnabled&&window.speechSynthesis&&window.speechSynthesis.speaking))setTimeout(()=>startListening(),350);
+   };
+   instance.start();$('voiceStatus').textContent='· LIVE';showError('Live conversation is listening. Speak naturally; recognized speech is sent automatically. Press LIVE OFF to stop.');
+  }catch(e){recognition=null;liveMode=false;updateLiveUI();showError('Could not start live microphone: '+e.message)}
+ }
+ function updateLiveUI(){
+  liveToggle.classList.toggle('active',liveMode);liveToggle.setAttribute('aria-pressed',String(liveMode));
+  liveToggle.textContent=liveMode?'🟢 LIVE ON':'🔴 LIVE OFF';
+  $('voiceStatus').textContent=liveMode?'· LIVE':'· OFF';
+  voiceInput.disabled=liveMode||!recognitionSupported;
+  if(!liveMode&&recognition){try{recognition.stop()}catch(_){}recognition=null}
+  if(!liveMode&&'speechSynthesis' in window)window.speechSynthesis.cancel();
+ }
  function setupVoice(){
-  const SpeechRecognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-  if(!SpeechRecognition){voiceInput.disabled=true;voiceInput.title='Speech recognition is not supported by this browser. Use typing instead.';return}
+  if(!SpeechRecognition){voiceInput.disabled=true;liveToggle.disabled=true;voiceInput.title='Speech recognition is not supported by this browser.';liveToggle.title='Live conversation is not supported by this browser.'}
   voiceInput.addEventListener('click',()=>{
+   if(liveMode)return;
    if(recognition){recognition.stop();return}
+   if(!SpeechRecognition)return;
    try{
     recognition=new SpeechRecognition();recognition.lang='ar-MA';recognition.continuous=false;recognition.interimResults=false;recognition.maxAlternatives=1;
     voiceInput.classList.add('active');voiceInput.textContent='● LISTENING';
     recognition.onresult=e=>{const transcript=e.results&&e.results[0]&&e.results[0][0]?e.results[0][0].transcript:'';if(transcript){message.value=transcript;message.focus();showError('Voice captured. Review the text, then press EXECUTE to send it.')}};
     recognition.onerror=e=>showError('Microphone/speech recognition: '+(e.error||'unavailable')+'. You can type instead.');
     recognition.onend=()=>{recognition=null;voiceInput.classList.remove('active');voiceInput.textContent='🎙 MIC'};
-    recognition.start();showError('Listening once. Voice recognition may send audio to your browser provider; nothing is submitted to JARVIS until you press EXECUTE.');
+    recognition.start();showError('Listening once. Browser speech recognition may send audio to its provider.');
    }catch(e){recognition=null;voiceInput.classList.remove('active');voiceInput.textContent='🎙 MIC';showError('Could not start microphone: '+e.message)}
+  });
+  liveToggle.addEventListener('click',()=>{
+   if(liveMode){liveMode=false;updateLiveUI();showError('Live conversation stopped.');return}
+   if(!connected){showError('Connect JARVIS first, then start LIVE conversation.');return}
+   if(!SpeechRecognition){showError('This browser does not support live speech recognition. Try a current version of Chrome or Edge.');return}
+   liveMode=true;speechEnabled=true;speakToggle.classList.add('active');speakToggle.setAttribute('aria-pressed','true');speakToggle.textContent='🔊 VOICE ON';updateLiveUI();startListening();
   });
   speakToggle.addEventListener('click',()=>{
    speechEnabled=!speechEnabled;speakToggle.classList.toggle('active',speechEnabled);speakToggle.setAttribute('aria-pressed',String(speechEnabled));speakToggle.textContent=speechEnabled?'🔊 VOICE ON':'🔊 VOICE OFF';
@@ -117,7 +158,14 @@ main{min-width:0;padding:14px 16px 95px}.topbar{display:flex;align-items:center;
  async function refreshSystem(){if(!connected)return;try{const d=await api('/api/system');const vals=[['cpuValue',d.cpu_percent],['ramValue',d.memory_percent],['diskValue',d.disk_percent]];for(const [id,v] of vals)$(id).textContent=Number.isFinite(v)&&v>=0?Math.round(v)+'%':'—';$('uptime').textContent=d.uptime?('System uptime: '+d.uptime):'System metrics connected';$('metricsState').textContent='LIVE';}catch(e){$('metricsState').textContent='UNAVAILABLE'}}
  async function connect(){if(connected){token='';connected=false;history=[];send.disabled=true;$('systemStatus').textContent='● SYSTEM STATUS · DISCONNECTED';$('connectionBadge').textContent='OFFLINE';$('bottomConn').textContent='OFFLINE';$('aiState').textContent='Awaiting connection';$('modelLabel').textContent='not connected';$('providerStatus').textContent='Not connected';$('modelState').textContent='OFFLINE';$('connect').textContent='⛭ Connect';showError('Disconnected.');return}const value=prompt('Enter your local JARVIS access token. It is held in memory only.');if(!value)return;token=value.trim();try{const d=await api('/api/status');connected=true;$('systemStatus').textContent='● SYSTEM STATUS · OPTIMAL';$('connectionBadge').textContent='CONNECTED';$('bottomConn').textContent='ONLINE';$('aiState').textContent=d.ready?'Ready · '+d.model:'API key missing';$('modelLabel').textContent=d.model||'configured';$('providerStatus').textContent=d.ready?'Connected':'API key missing';$('modelState').textContent=d.ready?'READY':'NEEDS KEY';$('connect').textContent='⛭ Disconnect';send.disabled=!d.ready;$('coreMode').textContent='ONLINE';$('coreState').textContent='SECURE CONNECTION ESTABLISHED';$('feedStatus').textContent='LIVE';showError(d.ready?'':'Server connected, but the OpenAI API key is not configured.');addFeed('Secure local connection established','Authenticated against the local JARVIS backend','DONE');await refreshSystem();}catch(e){token='';connected=false;showError(e.message)}}
  $('connect').addEventListener('click',connect);
- $('form').addEventListener('submit',async e=>{e.preventDefault();const text=message.value.trim();if(!text||busy||!connected)return;showError('');addMessage('user',text);history.push({role:'user',content:text});history=history.slice(-12);message.value='';setBusy(true);addFeed('Task received',text.slice(0,130),'INFO');try{const d=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text,history:history.slice(0,-1)})});addMessage('assistant',d.reply);speakReply(d.reply);history.push({role:'assistant',content:d.reply});history=history.slice(-12);addFeed('Response received','JARVIS returned a result for your request','DONE')}catch(e){showError(e.message);addFeed('Request failed',e.message,'WARN')}finally{setBusy(false);message.focus()}});
+ async function sendMessage(rawText){
+  const text=String(rawText||'').trim();if(!text||busy||!connected)return;
+  showError('');addMessage('user',text);history.push({role:'user',content:text});history=history.slice(-12);message.value='';setBusy(true);addFeed('Task received',text.slice(0,130),'INFO');
+  try{const d=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text,history:history.slice(0,-1)})});addMessage('assistant',d.reply);history.push({role:'assistant',content:d.reply});history=history.slice(-12);addFeed('Response received','JARVIS returned a result for your request','DONE');speakReply(d.reply)}
+  catch(e){showError(e.message);addFeed('Request failed',e.message,'WARN')}
+  finally{setBusy(false);if(liveMode&&!('speechSynthesis' in window&&window.speechSynthesis.speaking))startListening();else message.focus()}
+ }
+ $('form').addEventListener('submit',async e=>{e.preventDefault();await sendMessage(message.value)});
  message.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('form').requestSubmit()}});
  document.querySelectorAll('[data-prompt]').forEach(b=>b.addEventListener('click',()=>{message.value=b.dataset.prompt;message.focus()}));
  $('searchBtn').addEventListener('click',()=>message.focus());
