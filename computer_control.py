@@ -159,8 +159,15 @@ def execute_tool(name: str, arguments_json: str) -> str:
             if not path.is_absolute() or not path.exists():
                 raise ValueError("Provide an existing absolute path, such as C:\\Users\\... or D:\\... .")
             if path.is_file():
-                if path.suffix.casefold() in {".exe", ".com", ".bat", ".cmd", ".ps1", ".msi", ".scr", ".vbs", ".js", ".reg", ".lnk"}:
-                    raise ValueError("For safety, JARVIS will not launch executable, script, installer, registry, or shortcut files. Open the containing folder instead.")
+                blocked_suffixes = {
+                    ".exe", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".msi", ".msp",
+                    ".scr", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh", ".hta",
+                    ".reg", ".lnk", ".url", ".scf", ".cpl", ".msc", ".dll", ".sys",
+                    ".drv", ".ocx", ".jar", ".py", ".pyw", ".xll", ".chm", ".pif",
+                    ".gadget", ".application", ".appref-ms", ".html", ".htm",
+                }
+                if path.suffix.casefold() in blocked_suffixes:
+                    raise ValueError("For safety, JARVIS will not open executable, script, installer, shortcut, registry, or active-content files directly. Open the containing folder instead.")
                 os.startfile(str(path))
             else:
                 subprocess.Popen(["explorer.exe", str(path)], shell=False, close_fds=True)
@@ -287,7 +294,7 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 raise ValueError("JARVIS will not quarantine files inside Windows or Program Files. Use a trusted security product to handle system/application installations.")
             if target.stat().st_size > 2 * 1024**3:
                 raise ValueError("File exceeds the 2 GB quarantine limit.")
-            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            digest = _sha256_file(target)
             value = json.dumps({"path": str(target), "sha256": digest, "size": target.stat().st_size})
             return _stage("quarantine_file", f"Move the exact file '{target}' to the reversible JARVIS quarantine (not permanent deletion)", value)
         if name == "request_system_repair":
