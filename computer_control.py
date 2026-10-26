@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import getpass
+import hashlib
 import json
 import os
 import secrets
@@ -59,7 +60,8 @@ def tool_schemas() -> list[dict[str, Any]]:
         s("request_copy_file", "Stage copying a selected file between any accessible Windows drives using absolute source and destination paths. Never overwrite an existing destination; requires explicit confirmation.", {"source_path": {"type": "string"}, "destination_path": {"type": "string"}}, ["source_path", "destination_path"]),
         s("list_processes", "Read-only list of running processes sorted by RAM use.", {"limit": {"type": "integer"}}, ["limit"]),
         s("list_installed_apps", "List installed apps from Windows registry without uninstalling anything.", {}, []),
-        s("scan_with_clamav", "Scan a specific existing file or folder with ClamAV if installed. Update signatures first when freshclam is available. Report detections; never delete or quarantine automatically. If unavailable, return official install guidance.", {"path": {"type": "string"}}, ["path"]),
+        s("scan_with_clamav", "On-demand, resource-bounded ClamAV scan of one user-selected existing file or folder. Low process priority, capped file/scan sizes and file count, PUA detection enabled. Never deletes or quarantines. Does not auto-update signatures during scans.", {"path": {"type": "string"}}, ["path"]),
+        s("request_quarantine_file", "Stage moving one exact suspicious user-selected file into a reversible JARVIS quarantine after explicit confirmation. Never permanently deletes files or accepts folders/system/program installation paths.", {"path": {"type": "string"}}, ["path"]),
         s("request_system_repair", "Stage DISM image repair and SFC scan; requires explicit confirmation and may need Administrator.", {}, []),
         s("request_uninstall", "Stage uninstall of one exact app name via winget. Never remove Windows/security components, drivers, or shared runtimes.", {"app_name": {"type": "string"}}, ["app_name"]),
         s("request_stop_process", "Stage a graceful close request for a user-selected process to reduce load while gaming. Never force-kill or target Windows/security processes.", {"process_name": {"type": "string"}}, ["process_name"]),
@@ -188,9 +190,9 @@ def execute_tool(name: str, arguments_json: str) -> str:
         if name == "scan_with_clamav":
             _require_windows()
             import shutil
-            target = Path(args["path"].strip())
+            target = Path(args["path"].strip()).resolve()
             if not target.is_absolute() or not target.exists():
-                raise ValueError("Provide an existing absolute file or folder path, such as C:\\\\ or D:\\\\Downloads.")
+                raise ValueError("Provide an existing absolute file or folder path, such as C:\\Users\\...\\Downloads\\sample.exe.")
             candidates = [
                 shutil.which("clamscan"),
                 str(Path(os.environ.get("ProgramFiles", r"C:\\Program Files")) / "ClamAV" / "clamscan.exe"),
@@ -203,27 +205,46 @@ def execute_tool(name: str, arguments_json: str) -> str:
                     "message": "ClamAV is not installed or clamscan.exe was not found. No scan was performed.",
                     "official_download": "https://www.clamav.net/downloads",
                     "alternative": "ESET offers a free one-time Windows scanner: https://www.eset.com/us/home/online-scanner/",
-                    "note": "Install a scanner from its official site, update its signatures, then retry. JARVIS will not download or execute an installer automatically."}, ensure_ascii=False)
-            freshclam_candidates = [shutil.which("freshclam")]
-            scanner_dir = Path(scanner).parent
-            freshclam_candidates.extend([str(scanner_dir / "freshclam.exe"), str(scanner_dir.parent / "freshclam.exe")])
-            updater = next((p for p in freshclam_candidates if p and Path(p).is_file()), None)
-            update_result = None
-            if updater:
-                u = subprocess.run([updater], capture_output=True, text=True, timeout=300, check=False,
-                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-                update_result = {"exit_code": u.returncode, "output": (u.stdout + "\\n" + u.stderr)[-1200:]}
-            command = [scanner, "--infected", "--recursive", "--stdout", str(target)]
-            scan = subprocess.run(command, capture_output=True, text=True, timeout=3600, check=False,
-                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+                    "note": "JARVIS will not download or execute installers automatically."}, ensure_ascii=False)
+            # Deliberately skip automatic signature updates here to avoid network/CPU spikes on every scan.
+            # Use the scanner's installed database as-is and report that limitation to the user.
+            command = [scanner, "--infected", "--recursive", "--stdout", "--detect-pua=yes",
+                       "--max-filesize=50M", "--max-scansize=250M", "--max-files=2000",
+                       "--max-recursion=8", str(target)]
+            low_priority = getattr(subprocess, "BELOW_NORMAL_PRIORITY_CLASS", 0)
+            scan = subprocess.run(command, capture_output=True, text=True, timeout=900, check=False,
+                                  creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0) | low_priority)
             output = (scan.stdout + "\\n" + scan.stderr)[-12000:]
+            details = {"scanned_path": str(target), "target_type": "file" if target.is_file() else "folder"}
+            if target.is_file():
+                details["size_bytes"] = target.stat().st_size
+                details["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+                details["extension"] = target.suffix.lower()
             if scan.returncode not in (0, 1):
-                return json.dumps({"ok": False, "exit_code": scan.returncode, "output": output,
-                    "signature_update": update_result, "note": "ClamAV reported a scan error. No files were removed."}, ensure_ascii=False)
-            return json.dumps({"ok": True, "scanner": "ClamAV", "scanned_path": str(target),
+                return json.dumps({"ok": False, "scanner": "ClamAV", "exit_code": scan.returncode,
+                    **details, "output": output, "note": "Scan failed or timed out. No files were removed. Large files and folders may be skipped by the configured limits."}, ensure_ascii=False)
+            return json.dumps({"ok": True, "scanner": "ClamAV", **details,
                 "result": "detections_found" if scan.returncode == 1 else "no_detection_reported",
-                "exit_code": scan.returncode, "output": output, "signature_update": update_result,
-                "note": "This is not a guarantee that files are safe. JARVIS does not automatically delete or quarantine detections; review the report and use a trusted security tool for remediation."}, ensure_ascii=False)
+                "exit_code": scan.returncode, "output": output, "signature_update": "not run automatically to reduce resource/network use",
+                "limits": {"max_file_mb": 50, "max_total_scan_mb": 250, "max_files": 2000, "max_recursion": 8, "timeout_seconds": 900},
+                "note": "PUA/hacking-tool detections can include legitimate penetration-testing software such as Metasploit; this is not proof of malicious intent. Explain each detection and confidence. No file is deleted or quarantined automatically; a separate explicit user request is required."}, ensure_ascii=False)
+        if name == "request_quarantine_file":
+            _require_windows()
+            target = Path(args["path"].strip()).resolve()
+            if not target.is_absolute() or not target.is_file():
+                raise ValueError("Only one existing file can be quarantined; folders are not accepted.")
+            protected_roots = [
+                Path(os.environ.get("WINDIR", r"C:\\Windows")).resolve(),
+                Path(os.environ.get("ProgramFiles", r"C:\\Program Files")).resolve(),
+                Path(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)")).resolve(),
+            ]
+            if any(target == root or root in target.parents for root in protected_roots):
+                raise ValueError("JARVIS will not quarantine files inside Windows or Program Files. Use a trusted security product to handle system/application installations.")
+            if target.stat().st_size > 2 * 1024**3:
+                raise ValueError("File exceeds the 2 GB quarantine limit.")
+            digest = hashlib.sha256(target.read_bytes()).hexdigest()
+            value = json.dumps({"path": str(target), "sha256": digest, "size": target.stat().st_size})
+            return _stage("quarantine_file", f"Move the exact file '{target}' to the reversible JARVIS quarantine (not permanent deletion)", value)
         if name == "request_system_repair":
             return _stage("repair", "Run DISM /Online /Cleanup-Image /RestoreHealth followed by sfc /scannow; may require Administrator")
         if name == "request_uninstall":
@@ -261,6 +282,24 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 shutil.copy2(source, destination)
                 _PENDING_ACTIONS.pop(action_id, None)
                 return json.dumps({"ok": True, "copied_from": str(source), "copied_to": str(destination), "bytes": destination.stat().st_size}, ensure_ascii=False)
+            if action["kind"] == "quarantine_file":
+                import shutil
+                details = json.loads(action["value"])
+                source = Path(details["path"])
+                if not source.is_file():
+                    raise ValueError("The selected file no longer exists; nothing was changed.")
+                if source.stat().st_size != details["size"] or hashlib.sha256(source.read_bytes()).hexdigest() != details["sha256"]:
+                    raise ValueError("The file changed after review; nothing was moved. Scan and review it again.")
+                quarantine_dir = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "JARVIS" / "Quarantine"
+                quarantine_dir.mkdir(parents=True, exist_ok=True)
+                destination = quarantine_dir / (details["sha256"] + "_" + source.name)
+                if destination.exists():
+                    raise ValueError("A quarantine item with this name already exists; no file was moved.")
+                shutil.move(str(source), str(destination))
+                _PENDING_ACTIONS.pop(action_id, None)
+                return json.dumps({"ok": True, "quarantined": True, "original_path": str(source),
+                    "quarantine_path": str(destination), "sha256": details["sha256"],
+                    "note": "Moved to reversible quarantine; not permanently deleted."}, ensure_ascii=False)
             if action["kind"] == "repair":
                 d = subprocess.run(["DISM.exe", "/Online", "/Cleanup-Image", "/RestoreHealth"], capture_output=True, text=True, timeout=1800, check=False)
                 if d.returncode:
