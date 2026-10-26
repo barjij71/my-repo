@@ -26,7 +26,7 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 
 1. Open PowerShell in this project folder.
 2. Run `.\start.ps1`.
-3. On first launch, enter your OpenAI API key at the hidden prompt. It is saved in Windows Credential Manager, not in the repository. If OpenAI reports `AuthenticationError`, create a valid API key in your OpenAI Platform account, close JARVIS, then run `.start.ps1 -ResetApiKey` and enter the replacement key at the hidden prompt.
+3. On first launch, enter your OpenAI API key at the hidden prompt. It is saved in Windows Credential Manager, not in the repository. If OpenAI reports `AuthenticationError`, create a valid API key in your OpenAI Platform account, close JARVIS, then run `\\.\\start.ps1 -ResetApiKey` and enter the replacement key at the hidden prompt.
 4. Copy the JARVIS local access token printed by the launcher into the browser page and select **Connect**.
 5. To chat hands-free, select **LIVE OFF** once to turn on live conversation, then allow microphone access in the browser. JARVIS automatically sends recognized speech and speaks replies. Select **LIVE ON** to stop. Browser speech recognition may send audio to its provider; use this mode only if comfortable with that privacy trade-off.
 6. The local interface opens at http://127.0.0.1:8765.
