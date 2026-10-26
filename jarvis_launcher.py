@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 import time
 import webbrowser
@@ -15,6 +16,27 @@ def main() -> int:
     import setup_credentials
     import uvicorn
     from app import app
+
+    if "--self-test" in sys.argv[1:]:
+        from pathlib import Path
+        from computer_control import tool_schemas
+
+        static_index = Path(app.__file__).resolve().parent / "static" / "index.html"
+        if not static_index.is_file():
+            print("JARVIS package self-test failed: static/index.html is missing.")
+            return 3
+        route_paths = {getattr(route, "path", "") for route in app.routes}
+        required_routes = {"/", "/api/health", "/api/status", "/api/system", "/api/chat"}
+        if not required_routes.issubset(route_paths):
+            print("JARVIS package self-test failed: expected API routes are missing.")
+            return 3
+        required_tools = {"open_app", "analyze_suspicious_file", "scan_with_clamav", "save_memory", "search_memories", "forget_memory"}
+        available_tools = {item.get("name") for item in tool_schemas()}
+        if not required_tools.issubset(available_tools):
+            print("JARVIS package self-test failed: expected local tools are missing.")
+            return 3
+        print("JARVIS package self-test passed: imports, static UI, API routes, and required tools are available.")
+        return 0
 
     setup_result = setup_credentials.main()
     if setup_result != 0:
