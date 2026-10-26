@@ -43,6 +43,30 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _copy_file_no_overwrite(source: Path, destination: Path) -> int:
+    """Copy a file without ever replacing an existing destination, including races."""
+    import shutil
+
+    created_destination = False
+    try:
+        with destination.open("xb") as target:
+            created_destination = True
+            with source.open("rb") as original:
+                shutil.copyfileobj(original, target, length=1024 * 1024)
+        try:
+            shutil.copystat(source, destination)
+        except OSError:
+            pass
+        return destination.stat().st_size
+    except Exception:
+        if created_destination:
+            try:
+                destination.unlink(missing_ok=True)
+            except OSError:
+                pass
+        raise
+
+
 def _workspace_path(relative_path: str) -> Path:
     candidate = (WORKSPACE / relative_path).resolve()
     if candidate != WORKSPACE and WORKSPACE not in candidate.parents:
@@ -336,15 +360,14 @@ def execute_tool(name: str, arguments_json: str) -> str:
                 raise ValueError("Action ID missing or expired; stage it again after explicit confirmation.")
             _require_windows()
             if action["kind"] == "copy_file":
-                import shutil
                 details = json.loads(action["value"])
-                source = Path(details["source"])
-                destination = Path(details["destination"])
-                if not source.is_file() or not destination.parent.is_dir() or destination.exists():
+                source = Path(details["source"]).resolve()
+                destination = Path(details["destination"]).resolve()
+                if not source.is_file() or not destination.parent.is_dir():
                     raise ValueError("Source/destination changed after review; no file was copied. Check paths and stage again.")
-                shutil.copy2(source, destination)
+                copied_bytes = _copy_file_no_overwrite(source, destination)
                 _PENDING_ACTIONS.pop(action_id, None)
-                return json.dumps({"ok": True, "copied_from": str(source), "copied_to": str(destination), "bytes": destination.stat().st_size}, ensure_ascii=False)
+                return json.dumps({"ok": True, "copied_from": str(source), "copied_to": str(destination), "bytes": copied_bytes}, ensure_ascii=False)
             if action["kind"] == "quarantine_file":
                 import shutil
                 details = json.loads(action["value"])
