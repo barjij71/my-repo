@@ -109,7 +109,7 @@ def test_open_path_refuses_executable_files_on_windows(tmp_path):
     executable.write_text("test", encoding="utf-8")
     result = json.loads(control.execute_tool("open_path", json.dumps({"path": str(executable)})))
     assert result["ok"] is False
-    assert "will not launch executable" in result["error"]
+    assert "will not open executable" in result["error"]
 
 
 
