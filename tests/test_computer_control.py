@@ -112,6 +112,29 @@ def test_open_path_refuses_executable_files_on_windows(tmp_path):
 
 
 
+def test_open_path_blocks_active_content_suffixes_on_all_platforms(tmp_path):
+    dangerous = [
+        "payload.exe", "script.ps1", "script.py", "active.html",
+        "shortcut.url", "registry.reg", "installer.msi", "script.js",
+    ]
+    for filename in dangerous:
+        assert control._is_blocked_open_suffix(tmp_path / filename), filename
+
+    safe_examples = ["notes.txt", "report.pdf", "photo.png", "data.csv"]
+    for filename in safe_examples:
+        assert not control._is_blocked_open_suffix(tmp_path / filename), filename
+
+
+def test_streaming_sha256_matches_standard_digest(tmp_path):
+    import hashlib
+
+    sample = tmp_path / "hash-me.bin"
+    payload = b"jarvis-hash-test" * 100_000
+    sample.write_bytes(payload)
+    assert control._sha256_file(sample) == hashlib.sha256(payload).hexdigest()
+
+
+
 def test_clamav_scanner_is_exposed_and_windows_only():
     import os
     names = {tool["name"] for tool in control.tool_schemas()}
