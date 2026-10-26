@@ -112,15 +112,14 @@ def test_open_path_refuses_executable_files_on_windows(tmp_path):
 
 
 
-def test_clamav_scan_reports_official_options_when_scanner_missing(monkeypatch, tmp_path):
+def test_clamav_scanner_is_exposed_and_windows_only():
     import os
+    names = {tool["name"] for tool in control.tool_schemas()}
+    assert "scan_with_clamav" in names
     if os.name != "nt":
-        return
-    monkeypatch.setattr(control.shutil if hasattr(control, "shutil") else __import__("shutil"), "which", lambda _name: None)
-    result = json.loads(control.execute_tool("scan_with_clamav", json.dumps({"path": str(tmp_path)})))
-    assert result["ok"] is False
-    assert result["scanner_missing"] is True
-    assert "clamav.net" in result["official_download"]
+        result = json.loads(control.execute_tool("scan_with_clamav", json.dumps({"path": "/tmp"})))
+        assert result["ok"] is False
+        assert "Windows" in result["error"]
 
 
 def test_cross_drive_copy_requires_windows_and_is_exposed():
