@@ -55,7 +55,7 @@ jobs:
           2. Double-click JARVIS.exe. Keep the console window open while using JARVIS.
           3. On first launch, enter your OpenAI API key in the hidden prompt. It is stored in Windows Credential Manager.
           4. Copy the local access token shown in the console into the JARVIS browser page and select Connect.
-          5. Use the microphone button only when you want to dictate. Browser speech recognition may use an online provider. Spoken replies are optional.
+          5. For hands-free live conversation, select LIVE OFF once in the page, allow microphone access, and speak naturally; recognized speech is submitted automatically and replies are spoken. Select LIVE ON to stop. Browser speech recognition may use an online provider.
           6. Close the console or press Ctrl+C to stop JARVIS.
 
           Safety notes:
