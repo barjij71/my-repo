@@ -8,7 +8,7 @@ The current feature branch contains a first dashboard and restricted computer-co
 - A responsive sci-fi Command Center dashboard inspired by the supplied reference image, with navigation, AI-core animation, activity feed, quick commands, and session timeline
 - A browser chat interface with in-memory conversation history
 - A FastAPI API with bearer-token authentication
-- Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; inspect drives, installed apps, and RAM-heavy processes; start Microsoft Defender quick scan; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
+- Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; start Microsoft Defender quick scan; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
 - Authenticated local CPU, memory, disk, and uptime metrics for the dashboard
 - Automated API and computer-tool tests; GitHub Actions runs on Windows and Linux
