@@ -53,7 +53,8 @@ def test_tool_schemas_include_maintenance_capabilities():
     names = {tool["name"] for tool in control.tool_schemas()}
     assert {"open_path", "list_drives", "copy_to_clipboard", "list_processes",
             "list_installed_apps", "analyze_suspicious_file", "scan_with_clamav", "request_quarantine_file", "request_system_repair",
-            "request_uninstall", "request_stop_process", "confirm_pending_action"} <= names
+            "request_uninstall", "request_stop_process", "confirm_pending_action",
+            "save_memory", "search_memories", "list_memories", "forget_memory"} <= names
 
 
 def test_clipboard_is_text_only_and_rejects_non_windows(monkeypatch):
@@ -190,3 +191,22 @@ def test_static_triage_rejects_directories(tmp_path):
     result = json.loads(control.execute_tool("analyze_suspicious_file", json.dumps({"path": str(tmp_path)})))
     assert result["ok"] is False
     assert "file path" in result["error"]
+
+
+def test_memory_tools_route_through_the_local_store(tmp_path, monkeypatch):
+    monkeypatch.setenv("JARVIS_MEMORY_DB", str(tmp_path / "jarvis-memory.sqlite3"))
+    saved = json.loads(control.execute_tool("save_memory", json.dumps({
+        "content": "Prefers lightweight on-demand scans.",
+        "category": "preference",
+    })))
+    assert saved["ok"] is True
+    memory_id = saved["memory"]["id"]
+
+    found = json.loads(control.execute_tool("search_memories", json.dumps({
+        "query": "on-demand", "limit": 5,
+    })))
+    assert found["count"] == 1
+    assert found["memories"][0]["id"] == memory_id
+
+    forgotten = json.loads(control.execute_tool("forget_memory", json.dumps({"memory_id": memory_id})))
+    assert forgotten["ok"] is True
