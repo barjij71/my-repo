@@ -14,10 +14,9 @@ def main() -> int:
 
     # Import lazily so a clear platform message is shown before Windows-only setup.
     import setup_credentials
-    import uvicorn
-    from app import app
 
     if "--self-test" in sys.argv[1:]:
+        from app import app
         from pathlib import Path
         from computer_control import tool_schemas
 
@@ -47,9 +46,14 @@ def main() -> int:
         print("JARVIS package self-test passed: imports, static UI, API routes, and required tools are available.")
         return 0
 
+    # Configure credentials BEFORE importing app: app reads JARVIS_ACCESS_TOKEN
+    # from Windows Credential Manager once, at module import time.
     setup_result = setup_credentials.main()
     if setup_result != 0:
         return setup_result
+
+    import uvicorn
+    from app import app
 
     host = os.environ.get("JARVIS_HOST", "127.0.0.1").strip() or "127.0.0.1"
     if host not in {"127.0.0.1", "localhost"}:
