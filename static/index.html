@@ -1,152 +1,98 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <title>JARVIS — Personal Assistant</title>
-  <style>
-    :root { color-scheme: dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #08111d; color: #e8f0fb; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 20px; background: radial-gradient(ellipse at top, #16314b 0, #08111d 55%); }
-    main { width: min(780px, 100%); border: 1px solid #294760; border-radius: 22px; overflow: hidden; background: #0b1724ee; box-shadow: 0 24px 80px #0008; }
-    header { padding: 24px; border-bottom: 1px solid #223b50; display: flex; align-items: center; gap: 14px; }
-    .orb { width: 44px; height: 44px; border: 2px solid #70d6ff; border-radius: 50%; box-shadow: 0 0 22px #39bfff55, inset 0 0 18px #39bfff33; }
-    h1 { margin: 0; font-size: 1.3rem; letter-spacing: .12em; } header p { margin: 5px 0 0; color: #9bb2c8; font-size: .9rem; }
-    #status { margin-left: auto; color: #a9c2d8; font-size: .82rem; text-align: right; }
-    section { padding: 20px 24px; }
-    .connect { display: flex; gap: 10px; flex-wrap: wrap; }
-    input, textarea, button { font: inherit; border-radius: 10px; border: 1px solid #2a4961; }
-    input, textarea { width: 100%; background: #07111c; color: #e8f0fb; padding: 12px; }
-    button { background: #12334a; color: #eaf7ff; padding: 10px 15px; cursor: pointer; }
-    button:disabled { opacity: .45; cursor: not-allowed; }
-    button.primary { background: #12618a; border-color: #2d9bc9; }
-    #messages { min-height: 220px; max-height: 48vh; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
-    .message { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; padding: 13px 15px; border-radius: 12px; background: #122438; }
-    .message.user { background: #12394d; align-self: flex-end; max-width: 92%; }
-    .message.assistant { align-self: stretch; }
-    .label { color: #8abedb; font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
-    .composer { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
-    textarea { min-height: 54px; max-height: 180px; resize: vertical; }
-    .hint { color: #8ba4ba; font-size: .82rem; line-height: 1.5; }
-    #error { color: #ffb6a8; min-height: 1.2em; font-size: .88rem; }
-    @media (max-width: 520px) { body { padding: 8px; } header, section { padding: 16px; } #status { max-width: 100px; } .composer { grid-template-columns: 1fr; } }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>JARVIS — Command Center</title>
+<style>
+:root{color-scheme:dark;--bg:#030b14;--panel:#071827;--panel2:#0a2031;--line:#153d52;--cyan:#29e7ff;--blue:#1b9fca;--muted:#82a9bc;--text:#e6f8ff;--green:#53f6c5;--amber:#ffc76b;--red:#ff7185;font-family:Inter,"Segoe UI",system-ui,sans-serif}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 51% 15%,#0b2940 0,#04111e 42%,#02070d 100%);color:var(--text);font-size:14px}button,input,textarea{font:inherit}button{color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}
+.shell{display:grid;grid-template-columns:214px minmax(0,1fr);min-height:100vh}.sidebar{background:#03101b;border-right:1px solid var(--line);padding:18px 12px;display:flex;flex-direction:column;gap:17px}.brand{display:flex;align-items:center;gap:10px;padding:7px 6px 18px;border-bottom:1px solid var(--line)}.brand-mark{width:36px;height:36px;border:1px solid var(--cyan);border-radius:50%;display:grid;place-items:center;color:var(--cyan);box-shadow:0 0 20px #29e7ff38;font-size:21px}.brand strong{letter-spacing:.2em;font-size:15px}.brand small{display:block;color:var(--muted);font-size:9px;letter-spacing:.19em;margin-top:3px}.nav{display:grid;gap:5px}.nav button{display:flex;align-items:center;gap:10px;text-align:left;border:1px solid transparent;background:transparent;border-radius:7px;padding:10px;color:#9fc2d3}.nav button.active,.nav button:hover{background:#0a2a3c;border-color:#16526a;color:#e6fbff}.nav .ico{width:20px;text-align:center;color:var(--cyan)}.side-label{font-size:9px;letter-spacing:.19em;color:#54859a;padding:8px 7px 3px}.voice-card{border:1px solid var(--line);border-radius:9px;padding:12px;background:linear-gradient(145deg,#082034,#04111c);margin-top:auto}.voice-card h3{font-size:10px;letter-spacing:.16em;color:#80c5dc;margin:0 0 12px}.wave{height:24px;display:flex;align-items:center;gap:3px;justify-content:center}.wave i{display:block;width:3px;border-radius:5px;background:var(--cyan);height:var(--h);opacity:.85;animation:pulse 1.2s ease-in-out infinite alternate}.wave i:nth-child(3n){animation-delay:.3s}.wave i:nth-child(2n){animation-delay:.6s}@keyframes pulse{to{transform:scaleY(.45);opacity:.35}}.mic{width:46px;height:46px;border:1px solid #1d8ca8;border-radius:50%;display:grid;place-items:center;color:var(--cyan);margin:10px auto;background:#0a2c40;box-shadow:0 0 18px #29e7ff1b}.voice-card p{text-align:center;font-size:10px;color:var(--muted);margin:6px 0 0}
+main{min-width:0;padding:14px 16px 95px}.topbar{display:flex;align-items:center;gap:12px;min-height:46px;border-bottom:1px solid #123044;padding:0 2px 12px;margin-bottom:13px}.status-pill{border:1px solid #15553f;background:#06271f;color:var(--green);border-radius:20px;padding:6px 10px;font-size:10px;letter-spacing:.08em}.clock{margin:auto;text-align:center}.clock strong{display:block;color:var(--cyan);font-size:18px;letter-spacing:.08em}.clock small{color:var(--muted);font-size:10px}.top-actions{display:flex;gap:6px}.icon-btn,.small-btn{border:1px solid var(--line);background:#081c2a;border-radius:6px;padding:8px 10px;color:#a8d6e6}.icon-btn:hover,.small-btn:hover{border-color:var(--cyan)}.layout{display:grid;grid-template-columns:minmax(180px, .95fr) minmax(260px,2.1fr) minmax(210px,1.1fr);gap:12px;align-items:start}.column{display:grid;gap:12px;min-width:0}.panel{border:1px solid var(--line);border-radius:9px;background:linear-gradient(145deg,#092033eF,#05121eF5);overflow:hidden;box-shadow:inset 0 1px #ffffff05}.panel-head{display:flex;align-items:center;justify-content:space-between;padding:11px 12px;border-bottom:1px solid #13364a;color:#8bc9dd;font-size:10px;letter-spacing:.14em;text-transform:uppercase}.panel-head small{font-size:9px;color:var(--green);letter-spacing:.08em}.panel-body{padding:12px}.metric-list{display:grid;gap:9px}.metric{display:flex;align-items:center;gap:9px;border:1px solid #12384c;border-radius:6px;padding:9px;background:#061725}.metric-icon{width:26px;height:26px;display:grid;place-items:center;border-radius:6px;background:#0b3145;color:var(--cyan)}.metric div:nth-child(2){flex:1;min-width:0}.metric b{font-size:11px;display:block}.metric small{font-size:9px;color:var(--muted)}.dot{width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 9px #53f6c5}.core-panel{min-height:272px;position:relative;display:grid;place-items:center;background:radial-gradient(ellipse at center,#0a3047 0,#061827 52%,#04111d 100%)}.core{position:relative;width:min(240px,65vw);aspect-ratio:1;border-radius:50%;display:grid;place-items:center}.orbit{position:absolute;inset:12%;border:1px solid #26d9ff55;border-radius:50%;box-shadow:0 0 28px #00cfff12;animation:spin 18s linear infinite}.orbit.two{inset:2%;transform:rotateX(66deg) rotateZ(20deg);border-color:#31b6e655;animation-duration:24s}.orbit.three{inset:2%;transform:rotateY(68deg) rotateZ(-20deg);border-color:#31b6e655;animation-duration:30s;animation-direction:reverse}.core:before,.core:after{content:"";position:absolute;border-radius:50%;inset:24%;border:1px solid #25e9ff70;box-shadow:inset 0 0 28px #11cfff21,0 0 28px #11cfff20}.core:after{inset:34%;background:radial-gradient(circle,#20eaff30,#071a2a 70%)}.core-text{z-index:2;text-align:center;text-shadow:0 0 18px #29e7ff99}.core-text strong{font-size:clamp(20px,3vw,29px);letter-spacing:.22em;color:var(--cyan)}.core-text small{display:block;font-size:9px;letter-spacing:.25em;color:#9ddfed;margin-top:7px}.core-state{position:absolute;bottom:14px;left:0;right:0;text-align:center;color:#78b8cb;font-size:10px;letter-spacing:.12em}@keyframes spin{to{rotate:360deg}}.core-status{display:flex;justify-content:center;gap:18px;padding:10px;border-top:1px solid #12364a;color:var(--muted);font-size:10px}.core-status b{color:var(--green);font-weight:500}.agent-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.agent{border:1px solid #143a4d;border-radius:6px;padding:10px;background:#061827;min-width:0}.agent .agent-icon{font-size:17px;color:var(--cyan)}.agent strong{display:block;font-size:10px;margin-top:7px}.agent small{font-size:9px;color:var(--muted)}.agent .active{color:var(--green)}.feed{display:grid;gap:11px}.feed-item{display:grid;grid-template-columns:23px minmax(0,1fr) auto;gap:8px;align-items:start;font-size:10px}.feed-icon{width:22px;height:22px;border-radius:5px;background:#0a3041;display:grid;place-items:center;color:var(--cyan)}.feed-item b{font-weight:500;line-height:1.4}.feed-item small{display:block;color:var(--muted);font-size:9px;margin-top:3px}.tag{font-size:8px;border-radius:4px;padding:3px 5px;color:var(--green);background:#0b3029}.tag.warn{color:var(--amber);background:#382711}.quick{display:grid;gap:6px}.quick button{display:flex;gap:9px;align-items:center;text-align:left;border:1px solid #164259;background:#071c2a;padding:9px;border-radius:5px;font-size:10px}.quick button span{color:var(--cyan)}.quick button:hover{border-color:var(--cyan);background:#0b2a3a}.system-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.gauge{border:1px solid #13394d;background:#061725;border-radius:8px;padding:12px 6px;text-align:center}.gauge .ring{width:55px;height:55px;border-radius:50%;margin:0 auto 8px;display:grid;place-items:center;border:4px solid #15516a;border-top-color:var(--cyan);color:var(--cyan);font-size:12px}.gauge b{font-size:10px;display:block}.gauge small{font-size:9px;color:var(--muted)}.task{display:flex;gap:9px;align-items:center;padding:9px 0;border-bottom:1px solid #102f40}.task:last-child{border-bottom:0}.task .taskdot{width:7px;height:7px;border-radius:50%;background:var(--cyan)}.task div{flex:1}.task b{font-size:10px;font-weight:500;display:block}.task small{font-size:9px;color:var(--muted)}.empty{color:var(--muted);font-size:10px;line-height:1.6}.providers{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.provider{border:1px solid #12384b;border-radius:5px;padding:8px;font-size:10px;color:#9fc6d6}.provider span{color:var(--muted);font-size:9px;display:block;margin-top:4px}.bottom-bar{position:fixed;bottom:0;left:214px;right:0;z-index:5;display:grid;grid-template-columns:1fr minmax(240px,2fr) 1fr;gap:12px;align-items:center;padding:10px 18px;background:#03101bf2;border-top:1px solid #1a536a;backdrop-filter:blur(16px)}.bottom-meta{font-size:9px;color:var(--muted);display:flex;gap:12px}.composer{display:grid;grid-template-columns:1fr auto;gap:7px}.composer textarea{resize:vertical;min-height:42px;max-height:110px;width:100%;border:1px solid #1b6680;border-radius:8px;background:#061a29;color:var(--text);padding:11px;outline:none}.composer textarea:focus{border-color:var(--cyan);box-shadow:0 0 0 2px #29e7ff18}.send{border:1px solid #21c7e5;background:linear-gradient(135deg,#0b5974,#087e9a);border-radius:8px;padding:0 17px;font-weight:600}.send:hover{box-shadow:0 0 20px #29e7ff28}.error{color:var(--red);font-size:11px;margin:8px 0 0;min-height:1em}.mobile-menu{display:none}.page-view{display:none}.page-view.active{display:block}.view-title{font-size:20px;margin:8px 0;color:var(--cyan)}.view-copy{color:var(--muted);line-height:1.7}
+@media(max-width:1150px){.layout{grid-template-columns:minmax(170px,.8fr) minmax(260px,1.5fr)}.layout>.column:last-child{grid-column:1/-1;grid-template-columns:repeat(2,minmax(0,1fr))}.bottom-bar{grid-template-columns:1fr minmax(240px,2fr)}.bottom-meta.right{display:none}}
+@media(max-width:760px){.shell{grid-template-columns:1fr}.sidebar{display:none}.bottom-bar{left:0;grid-template-columns:1fr;padding:8px 10px}.bottom-meta{display:none}.layout{grid-template-columns:1fr}.layout>.column:last-child{grid-column:auto;grid-template-columns:1fr}.topbar{flex-wrap:wrap}.clock{order:3;width:100%;margin:0}.status-pill{font-size:9px}.top-actions{margin-left:auto}.core-panel{min-height:245px}main{padding:10px 10px 95px}.agent-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.panel-head{padding:10px}.panel-body{padding:10px}}
+</style>
 </head>
 <body>
+<div class="shell">
+<aside class="sidebar">
+  <div class="brand"><div class="brand-mark">✳</div><div><strong>JARVIS</strong><small>COMMAND CENTER</small></div></div>
+  <div class="side-label">WORKSPACE</div>
+  <nav class="nav" id="nav">
+    <button class="active" data-view="command"><span class="ico">⌘</span>Command Center</button>
+    <button data-view="core"><span class="ico">◉</span>AI Core</button>
+    <button data-view="agents"><span class="ico">✣</span>Agents</button>
+    <button data-view="tasks"><span class="ico">▤</span>Tasks & Activity</button>
+    <button data-view="memory"><span class="ico">▥</span>Memory</button>
+    <button data-view="tools"><span class="ico">⚙</span>Tools & Skills</button>
+  </nav>
+  <div class="side-label">SYSTEM</div>
+  <nav class="nav"><button data-view="system"><span class="ico">⌁</span>System Monitor</button><button data-view="settings"><span class="ico">⚙</span>Settings & Access</button></nav>
+  <div class="voice-card"><h3>VOICE STATUS <span id="voiceStatus">· OFF</span></h3><div class="wave" aria-hidden="true"><i style="--h:6px"></i><i style="--h:13px"></i><i style="--h:20px"></i><i style="--h:10px"></i><i style="--h:17px"></i><i style="--h:7px"></i><i style="--h:14px"></i><i style="--h:21px"></i><i style="--h:11px"></i><i style="--h:18px"></i><i style="--h:8px"></i><i style="--h:15px"></i><i style="--h:22px"></i><i style="--h:12px"></i><i style="--h:19px"></i><i style="--h:9px"></i><i style="--h:16px"></i><i style="--h:6px"></i><i style="--h:13px"></i></div><div class="mic">♩</div><p>Voice capture is not configured</p><p style="margin-top:8px">Local assistant · protected</p></div>
+</aside>
 <main>
-  <header>
-    <div class="orb" aria-hidden="true"></div>
-    <div><h1>JARVIS</h1><p>Personal assistant · Windows-first</p></div>
-    <div id="status" role="status">Not connected</div>
-  </header>
-  <section>
-    <label for="token">Local access token</label>
-    <div class="connect">
-      <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="Enter the token configured on this PC" aria-describedby="token-help">
-      <button id="connect">Connect</button>
+  <div class="topbar"><div class="status-pill" id="systemStatus">● SYSTEM STATUS · WAITING</div><div class="clock"><strong id="clock">--:--:--</strong><small id="dateLine">LOCAL COMMAND CENTER</small></div><div class="top-actions"><button class="icon-btn" id="searchBtn" title="Focus command input">⌕</button><button class="icon-btn" id="connect">⛭ Connect</button></div></div>
+  <div id="command" class="page-view active">
+  <div class="layout">
+    <div class="column">
+      <section class="panel"><div class="panel-head">AI CORE OVERVIEW <small id="connectionBadge">OFFLINE</small></div><div class="panel-body metric-list">
+        <div class="metric"><div class="metric-icon">◉</div><div><b>AI Core</b><small id="aiState">Awaiting connection</small></div><span class="dot" style="background:#607f8c"></span></div>
+        <div class="metric"><div class="metric-icon">▥</div><div><b>Workspace</b><small>Local task files</small></div><span class="dot"></span></div>
+        <div class="metric"><div class="metric-icon">⌘</div><div><b>Computer tools</b><small>Restricted mode</small></div><span class="dot"></span></div>
+        <div class="metric"><div class="metric-icon">♧</div><div><b>Voice</b><small>Not configured</small></div><span class="dot" style="background:#607f8c"></span></div>
+        <div class="metric"><div class="metric-icon">⛨</div><div><b>Safety</b><small>Local token required</small></div><span class="dot"></span></div>
+      </div></section>
+      <section class="panel"><div class="panel-head">SYSTEM MONITOR <small id="metricsState">NOT CONNECTED</small></div><div class="panel-body"><div class="system-grid">
+        <div class="gauge"><div class="ring" id="cpuValue">—</div><b>CPU</b><small>Load</small></div><div class="gauge"><div class="ring" id="ramValue">—</div><b>MEMORY</b><small>Used</small></div><div class="gauge"><div class="ring" id="diskValue">—</div><b>DISK</b><small>Used</small></div>
+      </div><p class="empty" id="uptime">Connect to view real system metrics.</p></div></section>
     </div>
-    <p class="hint" id="token-help">The token is kept only in this page's memory and is not saved to browser storage. Never share it.</p>
-    <div id="error" role="alert"></div>
-  </section>
-  <section id="messages" aria-live="polite">
-    <div class="message assistant"><div class="label">JARVIS</div>Ready to connect. JARVIS can open approved apps and websites and manage text files inside its workspace. Arbitrary shell commands, file deletion, administrator actions, and registry changes are disabled.</div>
-  </section>
-  <section>
-    <form id="form">
-      <div class="composer">
-        <textarea id="message" placeholder="Write a message… (Ctrl+Enter to send)" maxlength="6000" required></textarea>
-        <button id="send" class="primary" type="submit" disabled>Send</button>
-      </div>
-    </form>
-    <p class="hint">Conversation history currently stays in this page's memory and is cleared when you reload it.</p>
-  </section>
+    <div class="column">
+      <section class="panel"><div class="panel-head">JARVIS AI CORE <small id="coreMode">STANDBY</small></div><div class="core-panel"><div class="core"><div class="orbit"></div><div class="orbit two"></div><div class="orbit three"></div><div class="core-text"><strong>J A R V I S</strong><small>PERSONAL AI · v0.2</small></div></div><div class="core-state" id="coreState">AWAITING YOUR COMMAND</div></div><div class="core-status"><span>Model: <b id="modelLabel">not connected</b></span><span>Tools: <b>restricted</b></span><span>Mode: <b>local</b></span></div></section>
+      <section class="panel"><div class="panel-head">ACTIVE AGENTS <small>TOOL ROUTING</small></div><div class="panel-body agent-grid">
+        <div class="agent"><span class="agent-icon">⌘</span><strong>Task Agent</strong><small id="agentTask">Ready when connected</small></div><div class="agent"><span class="agent-icon">⌕</span><strong>Research Agent</strong><small>Web tool not connected</small></div><div class="agent"><span class="agent-icon">▥</span><strong>Memory Agent</strong><small>Session only</small></div><div class="agent"><span class="agent-icon">▣</span><strong>Browser Agent</strong><small>Open URL only</small></div><div class="agent"><span class="agent-icon">☷</span><strong>File Agent</strong><small>Workspace sandbox</small></div><div class="agent"><span class="agent-icon">⛨</span><strong>Safety Agent</strong><small class="active">Guardrails active</small></div>
+      </div></section>
+      <section class="panel"><div class="panel-head">MISSION TIMELINE <small id="timelineState">READY</small></div><div class="panel-body" id="timeline"><div class="empty">Your commands and completed actions will appear here. No activity is fabricated.</div></div></section>
+    </div>
+    <div class="column">
+      <section class="panel"><div class="panel-head">LIVE INTELLIGENCE FEED <small id="feedStatus">LOCAL</small></div><div class="panel-body feed" id="feed"><div class="feed-item"><div class="feed-icon">✓</div><div><b>Local dashboard ready</b><small>Waiting for secure connection</small></div><span class="tag">READY</span></div><div class="feed-item"><div class="feed-icon">⛨</div><div><b>Protected workspace enabled</b><small>File access remains scoped</small></div><span class="tag">SAFE</span></div></div></section>
+      <section class="panel"><div class="panel-head">QUICK COMMANDS</div><div class="panel-body quick"><button data-prompt="Open Notepad"><span>▣</span>Open Notepad</button><button data-prompt="Open Calculator"><span>▦</span>Open Calculator</button><button data-prompt="Open File Explorer"><span>▤</span>Open File Explorer</button><button data-prompt="List the files in my JARVIS workspace"><span>⌕</span>List workspace files</button><button data-prompt="Create a file named welcome.txt in my workspace with a short welcome note"><span>＋</span>Create welcome note</button></div></section>
+      <section class="panel"><div class="panel-head">MODEL STATUS <small id="modelState">UNKNOWN</small></div><div class="panel-body providers"><div class="provider">OpenAI<span id="providerStatus">Not connected</span></div><div class="provider">Local tools<span>Restricted set</span></div><div class="provider">Voice<span>Not configured</span></div><div class="provider">Memory<span>Session only</span></div></div></section>
+    </div>
+  </div></div>
+  <div id="otherView" class="page-view"><div class="panel"><div class="panel-head" id="otherTitle">JARVIS</div><div class="panel-body"><h2 class="view-title" id="otherHeading">Command Center</h2><p class="view-copy" id="otherCopy"></p><div id="otherContent"></div></div></div></div>
+  <div class="error" id="error" role="alert"></div>
 </main>
+</div>
+<div class="bottom-bar"><div class="bottom-meta"><span>● <span id="bottomConn">OFFLINE</span></span><span>⌁ Local-first</span></div><form id="form" class="composer"><textarea id="message" placeholder="Talk to JARVIS — describe a task… (Ctrl+Enter to send)" maxlength="6000" required aria-label="Command for JARVIS"></textarea><button id="send" class="send" type="submit" disabled>EXECUTE ↗</button></form><div class="bottom-meta right" style="justify-content:flex-end"><span>Emergency stop: disconnect token</span></div></div>
 <script>
 (() => {
-  const tokenInput = document.getElementById('token');
-  const connectButton = document.getElementById('connect');
-  const status = document.getElementById('status');
-  const error = document.getElementById('error');
-  const form = document.getElementById('form');
-  const messageInput = document.getElementById('message');
-  const sendButton = document.getElementById('send');
-  const messages = document.getElementById('messages');
-  let token = '';
-  let history = [];
-  let busy = false;
-
-  function showError(text = '') { error.textContent = text; }
-  function addMessage(role, content) {
-    const box = document.createElement('div');
-    box.className = 'message ' + role;
-    const label = document.createElement('div');
-    label.className = 'label';
-    label.textContent = role === 'user' ? 'You' : 'JARVIS';
-    const body = document.createElement('div');
-    body.textContent = content;
-    box.append(label, body);
-    messages.appendChild(box);
-    messages.scrollTop = messages.scrollHeight;
-  }
-  async function api(path, options = {}) {
-    const response = await fetch(path, {
-      ...options,
-      headers: { ...(options.headers || {}), Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
-    });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Request failed (' + response.status + ')');
-    return data;
-  }
-  connectButton.addEventListener('click', async () => {
-    token = tokenInput.value.trim();
-    if (!token) { showError('Enter the local access token first.'); return; }
-    showError('');
-    connectButton.disabled = true;
-    try {
-      const data = await api('/api/status');
-      status.textContent = data.ready ? 'Connected' : 'Connected · API key missing';
-      sendButton.disabled = !data.ready;
-      showError(data.ready ? '' : 'Server connected, but OPENAI_API_KEY is not configured on the PC.');
-      tokenInput.value = '';
-    } catch (e) {
-      token = '';
-      status.textContent = 'Not connected';
-      sendButton.disabled = true;
-      showError(e.message);
-    } finally { connectButton.disabled = false; }
-  });
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const message = messageInput.value.trim();
-    if (!message || busy || !token) return;
-    busy = true;
-    sendButton.disabled = true;
-    showError('');
-    addMessage('user', message);
-    const priorHistory = history.slice(-12);
-    history.push({ role: 'user', content: message });
-    messageInput.value = '';
-    try {
-      const data = await api('/api/chat', { method: 'POST', body: JSON.stringify({ message, history: priorHistory }) });
-      addMessage('assistant', data.reply);
-      history.push({ role: 'assistant', content: data.reply });
-      history = history.slice(-12);
-    } catch (e) {
-      showError(e.message);
-      history = history.slice(0, -1);
-    } finally {
-      busy = false;
-      sendButton.disabled = !token;
-      messageInput.focus();
-    }
-  });
-  messageInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
-      event.preventDefault();
-      form.requestSubmit();
-    }
-  });
+ const $=id=>document.getElementById(id);let token='',history=[],busy=false,connected=false,started=Date.now(),actions=[];
+ const error=$('error'),send=$('send'),message=$('message');
+ const descriptions={
+ core:['AI Core','The current assistant connection and available tools.','This build connects to the configured OpenAI model and the restricted local toolset. Voice, screen understanding and general mouse/keyboard control are not yet implemented.'],
+ agents:['Agents','Task routing and capability status.','The labels here describe capability groups in this build, not separate autonomous processes. Task and file tools are available after connecting.'],
+ tasks:['Tasks & Activity','Local session activity.','Each command and response is shown here during this browser session. Persistent history and background tasks are not yet enabled.'],
+ memory:['Memory','What JARVIS remembers.','Conversation context is held temporarily in this page. Durable memory, semantic search and cross-session recall are not yet configured.'],
+ tools:['Tools & Skills','Tools enabled in this version.','Open approved apps: Notepad, Calculator and File Explorer. Open HTTP(S) URLs. List, read and write text files only inside Documents/JARVISWorkspace. Arbitrary shell commands, deletion, registry changes and administrator actions are disabled.'],
+ system:['System Monitor','Live measurements from this computer.','System metrics are fetched from the local backend when available. If a value is unavailable, JARVIS shows a dash rather than inventing a number.'],
+ settings:['Settings & Access','Connection and safety settings.','JARVIS uses a local access token and the configured API key. The server is intended to bind to 127.0.0.1. Disconnect by reloading the page or clearing the connection. Never expose the server to the public internet.']
+ };
+ function showError(t=''){error.textContent=t}
+ function addMessage(role,content){const row={role,content,time:new Date().toLocaleTimeString()};actions.push(row);actions=actions.slice(-30);renderTimeline();return row}
+ function renderTimeline(){const el=$('timeline');el.replaceChildren();if(!actions.length){el.innerHTML='<div class="empty">Your commands and completed actions will appear here.</div>';return}actions.slice(-5).reverse().forEach(a=>{const d=document.createElement('div');d.className='task';const dot=document.createElement('span');dot.className='taskdot';const body=document.createElement('div');const b=document.createElement('b');b.textContent=(a.role==='user'?'COMMAND · ':'JARVIS · ')+a.content.slice(0,110);const sm=document.createElement('small');sm.textContent=a.time;body.append(b,sm);d.append(dot,body);el.append(d)})}
+ function addFeed(title,detail,tag='INFO'){const d=document.createElement('div');d.className='feed-item';const i=document.createElement('div');i.className='feed-icon';i.textContent=tag==='DONE'?'✓':tag==='WARN'?'!':'⌁';const b=document.createElement('b');b.textContent=title;const s=document.createElement('small');s.textContent=detail;const t=document.createElement('span');t.className='tag'+(tag==='WARN'?' warn':'');t.textContent=tag;const wrap=document.createElement('div');wrap.append(b,s);d.append(i,wrap,t);$('feed').prepend(d);while($('feed').children.length>8)$('feed').lastChild.remove()}
+ function setBusy(v){busy=v;send.disabled=!connected||v; $('coreMode').textContent=v?'EXECUTING':'ONLINE';$('coreState').textContent=v?'PROCESSING YOUR REQUEST':'READY FOR YOUR COMMAND';$('agentTask').textContent=v?'Working…':'Ready';$('timelineState').textContent=v?'IN PROGRESS':'READY'}
+ async function api(path,opts={}){const r=await fetch(path,{...opts,headers:{...(opts.headers||{}),Authorization:'Bearer '+token,'Content-Type':'application/json'}});const data=await r.json().catch(()=>({}));if(!r.ok)throw new Error(data.detail||'Request failed ('+r.status+')');return data}
+ async function refreshSystem(){if(!connected)return;try{const d=await api('/api/system');const vals=[['cpuValue',d.cpu_percent],['ramValue',d.memory_percent],['diskValue',d.disk_percent]];for(const [id,v] of vals)$(id).textContent=Number.isFinite(v)?Math.round(v)+'%':'—';$('uptime').textContent=d.uptime?('System uptime: '+d.uptime):'System metrics connected';$('metricsState').textContent='LIVE';}catch(e){$('metricsState').textContent='UNAVAILABLE'}}
+ async function connect(){if(connected){token='';connected=false;history=[];send.disabled=true;$('systemStatus').textContent='● SYSTEM STATUS · DISCONNECTED';$('connectionBadge').textContent='OFFLINE';$('bottomConn').textContent='OFFLINE';$('aiState').textContent='Awaiting connection';$('modelLabel').textContent='not connected';$('providerStatus').textContent='Not connected';$('modelState').textContent='OFFLINE';$('connect').textContent='⛭ Connect';showError('Disconnected.');return}const value=prompt('Enter your local JARVIS access token. It is held in memory only.');if(!value)return;token=value.trim();try{const d=await api('/api/status');connected=true;$('systemStatus').textContent='● SYSTEM STATUS · OPTIMAL';$('connectionBadge').textContent='CONNECTED';$('bottomConn').textContent='ONLINE';$('aiState').textContent=d.ready?'Ready · '+d.model:'API key missing';$('modelLabel').textContent=d.model||'configured';$('providerStatus').textContent=d.ready?'Connected':'API key missing';$('modelState').textContent=d.ready?'READY':'NEEDS KEY';$('connect').textContent='⛭ Disconnect';send.disabled=!d.ready;$('coreMode').textContent='ONLINE';$('coreState').textContent='SECURE CONNECTION ESTABLISHED';$('feedStatus').textContent='LIVE';showError(d.ready?'':'Server connected, but the OpenAI API key is not configured.');addFeed('Secure local connection established','Authenticated against the local JARVIS backend','DONE');await refreshSystem();}catch(e){token='';connected=false;showError(e.message)}}
+ $('connect').addEventListener('click',connect);
+ $('form').addEventListener('submit',async e=>{e.preventDefault();const text=message.value.trim();if(!text||busy||!connected)return;showError('');addMessage('user',text);history.push({role:'user',content:text});history=history.slice(-12);message.value='';setBusy(true);addFeed('Task received',text.slice(0,130),'INFO');try{const d=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text,history:history.slice(0,-1)})});addMessage('assistant',d.reply);history.push({role:'assistant',content:d.reply});history=history.slice(-12);addFeed('Response received','JARVIS returned a result for your request','DONE')}catch(e){showError(e.message);addFeed('Request failed',e.message,'WARN')}finally{setBusy(false);message.focus()}});
+ message.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();$('form').requestSubmit()}});
+ document.querySelectorAll('[data-prompt]').forEach(b=>b.addEventListener('click',()=>{message.value=b.dataset.prompt;message.focus()}));
+ $('searchBtn').addEventListener('click',()=>message.focus());
+ document.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{document.querySelectorAll('[data-view]').forEach(x=>x.classList.toggle('active',x===b));const view=b.dataset.view;$('command').classList.toggle('active',view==='command');$('otherView').classList.toggle('active',view!=='command');if(view!=='command'){const d=descriptions[view]||descriptions.core;$('otherTitle').textContent=d[0].toUpperCase();$('otherHeading').textContent=d[0];$('otherCopy').textContent=d[1];const content=$('otherContent');content.replaceChildren();const p=document.createElement('p');p.className='view-copy';p.textContent=d[2];content.append(p);if(view==='tasks'){const list=document.createElement('div');list.className='feed';actions.slice().reverse().forEach(a=>{const row=document.createElement('div');row.className='task';const b2=document.createElement('b');b2.textContent=a.role.toUpperCase()+': '+a.content;row.append(b2);list.append(row)});content.append(list)}if(view==='tools'){const q=document.createElement('div');q.className='quick';['Open Notepad','Open Calculator','Open File Explorer','List the files in my JARVIS workspace'].forEach(prompt=>{const btn=document.createElement('button');btn.textContent=prompt;btn.addEventListener('click',()=>{message.value=prompt;message.focus()});q.append(btn)});content.append(q)}}}));
+ function tick(){const d=new Date();$('clock').textContent=d.toLocaleTimeString([], {hour12:false});$('dateLine').textContent=d.toLocaleDateString([], {weekday:'long',month:'long',day:'numeric',year:'numeric'}).toUpperCase()}tick();setInterval(tick,1000);setInterval(refreshSystem,10000);
 })();
 </script>
 </body>
