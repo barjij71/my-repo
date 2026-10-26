@@ -98,3 +98,14 @@ def test_confirmation_false_cancels_pending_action():
     result = json.loads(control.execute_tool("confirm_pending_action", json.dumps({"action_id": staged["action_id"], "confirmed": False})))
     assert result["ok"] is True
     assert result["cancelled"] is True
+
+
+def test_open_path_refuses_executable_files_on_windows(tmp_path):
+    import os
+    if os.name != "nt":
+        return
+    executable = tmp_path / "not-a-real-program.exe"
+    executable.write_text("test", encoding="utf-8")
+    result = json.loads(control.execute_tool("open_path", json.dumps({"path": str(executable)})))
+    assert result["ok"] is False
+    assert "will not launch executable" in result["error"]
