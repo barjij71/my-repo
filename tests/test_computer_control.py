@@ -109,3 +109,14 @@ def test_open_path_refuses_executable_files_on_windows(tmp_path):
     result = json.loads(control.execute_tool("open_path", json.dumps({"path": str(executable)})))
     assert result["ok"] is False
     assert "will not launch executable" in result["error"]
+
+
+def test_cross_drive_copy_requires_windows_and_is_exposed():
+    names = {tool["name"] for tool in control.tool_schemas()}
+    assert "request_copy_file" in names
+    result = json.loads(control.execute_tool("request_copy_file", json.dumps({
+        "source_path": "C:\\\\example.txt", "destination_path": "D:\\\\example.txt"
+    })))
+    if __import__("os").name != "nt":
+        assert result["ok"] is False
+        assert "Windows" in result["error"]
