@@ -14,7 +14,21 @@ from typing_extensions import Annotated
 
 ROOT = Path(__file__).resolve().parent
 STATIC_DIR = ROOT / "static"
-APP_TOKEN = os.environ.get("JARVIS_ACCESS_TOKEN", "").strip()
+def _load_access_token() -> str:
+    value = os.environ.get("JARVIS_ACCESS_TOKEN", "").strip()
+    if value:
+        return value
+    if os.name == "nt":
+        try:
+            import keyring
+
+            return keyring.get_password("JARVIS", "JARVIS_ACCESS_TOKEN") or ""
+        except Exception:
+            return ""
+    return ""
+
+
+APP_TOKEN = _load_access_token()
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip()
 
 app = FastAPI(title="JARVIS Personal Assistant", version="0.1.0")
