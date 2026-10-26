@@ -20,7 +20,7 @@ This is the initial working scaffold. It includes:
 ## First launch
 
 1. Open PowerShell in this project folder.
-2. Run `.` followed by `\start.ps1` (the command is ` .\start.ps1` without the leading space).
+2. Run ` .\\start.ps1` (without the leading space).
 3. On first launch, enter your OpenAI API key at the hidden prompt. It is saved in Windows Credential Manager, not in the repository.
 4. Copy the JARVIS local access token printed by the launcher into the browser page and select **Connect**.
 5. The local interface opens at http://127.0.0.1:8765.
