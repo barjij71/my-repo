@@ -52,7 +52,7 @@ def test_write_rejects_path_traversal(tmp_path, monkeypatch):
 def test_tool_schemas_include_maintenance_capabilities():
     names = {tool["name"] for tool in control.tool_schemas()}
     assert {"open_path", "list_drives", "copy_to_clipboard", "list_processes",
-            "list_installed_apps", "defender_quick_scan", "request_system_repair",
+            "list_installed_apps", "scan_with_clamav", "request_system_repair",
             "request_uninstall", "request_stop_process", "confirm_pending_action"} <= names
 
 
@@ -109,6 +109,18 @@ def test_open_path_refuses_executable_files_on_windows(tmp_path):
     result = json.loads(control.execute_tool("open_path", json.dumps({"path": str(executable)})))
     assert result["ok"] is False
     assert "will not launch executable" in result["error"]
+
+
+
+def test_clamav_scan_reports_official_options_when_scanner_missing(monkeypatch, tmp_path):
+    import os
+    if os.name != "nt":
+        return
+    monkeypatch.setattr(control.shutil if hasattr(control, "shutil") else __import__("shutil"), "which", lambda _name: None)
+    result = json.loads(control.execute_tool("scan_with_clamav", json.dumps({"path": str(tmp_path)})))
+    assert result["ok"] is False
+    assert result["scanner_missing"] is True
+    assert "clamav.net" in result["official_download"]
 
 
 def test_cross_drive_copy_requires_windows_and_is_exposed():
