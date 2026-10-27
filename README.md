@@ -11,7 +11,7 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 - Optional push-to-talk dictation, spoken replies, and hands-free live voice conversation using browser speech APIs. Live mode is explicitly started/stopped by the user, automatically submits recognized speech, and speaks replies; browser speech recognition may use an online provider. High-impact actions still require a separate explicit confirmation.
 - A FastAPI API with bearer-token authentication
 - Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; run a dependency-free static triage on one file (SHA-256, file-type hint, and suspicious-string indicators, without execution or upload), and scan selected files/folders on demand with resource-bounded ClamAV (low process priority, PUA detection, file-count/size/recursion/timeout limits, no automatic signature update), with official ClamAV/ESET options if no scanner is found; stage moving one exact reviewed file to reversible quarantine only after explicit confirmation, verifying its SHA-256 first; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
-- Provider Settings for OpenAI, Grok/xAI, Claude/Anthropic, Gemini/Google, and OpenRouter, with safe connection tests and automatic failover on rate-limit/quota and transient connectivity failures; per-provider API keys and model IDs are stored in Windows Credential Manager/system keyring and never returned to the browser
+- Provider Settings for OpenAI, Claude/Anthropic, Gemini/Google, and OpenRouter, with safe connection tests and automatic failover on rate-limit/quota and transient connectivity failures; per-provider API keys and model IDs are stored in Windows Credential Manager/system keyring and never returned to the browser
 - Authenticated local CPU, memory, disk, and uptime metrics for the dashboard
 - A Logs & Diagnostics dashboard page with severity filters, safe report copying, user-triggered log clearing, and actionable provider error guidance. The bounded in-memory log excludes prompts, API keys, and access tokens and is cleared when the backend restarts.
 - Automated API and computer-tool tests; GitHub Actions runs on Windows and Linux
@@ -21,7 +21,7 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 
 - Windows 10 or 11
 - Python 3.12 installed and available through the Windows Python Launcher (`py -3.12`)
-- An API key for at least one supported provider (OpenAI, Grok/xAI, Claude/Anthropic, Gemini/Google, or OpenRouter)
+- An API key for at least one supported provider (OpenAI, Claude/Anthropic, Gemini/Google, or OpenRouter)
 
 ## First launch
 
@@ -36,7 +36,7 @@ The launcher creates a project-local virtual environment and installs the requir
 
 ## Configuration
 
-- Add each API key in **Settings & Access → Provider Settings**. JARVIS tries the selected provider first, then automatically falls back to other configured providers on rate-limit/quota or transient connectivity errors. It honors `Retry-After` when available, applies a temporary cooldown, and automatically returns recovered providers to rotation after cooldown expiry. Each provider has its own saved model ID. Current defaults are `gpt-4.1-mini` (OpenAI), `grok-4.6` (Grok), `claude-sonnet-4-6` (Claude), `gemini-2.5-flash` (Gemini), and `openrouter/auto` (OpenRouter). Model availability and account access can change; edit the model ID in the UI if needed.\n- `OPENAI_MODEL`: optional OpenAI model override; defaults to `gpt-4.1-mini`.
+- Add each API key in **Settings & Access → Provider Settings**. JARVIS tries the selected provider first, then automatically falls back to other configured providers on rate-limit/quota or transient connectivity errors. It honors `Retry-After` when available, applies a temporary cooldown, and automatically returns recovered providers to rotation after cooldown expiry. Each provider has its own saved model ID. Current defaults are `gpt-4.1-mini` (OpenAI), `claude-sonnet-4-6` (Claude), `gemini-2.5-flash` (Gemini), and `openrouter/auto` (OpenRouter). Model availability and account access can change; edit the model ID in the UI if needed.\n- `OPENAI_MODEL`: optional OpenAI model override; defaults to `gpt-4.1-mini`.
 - To replace a stored OpenAI API key on the source checkout, close JARVIS and run `.\start.ps1 -ResetApiKey` in PowerShell. For the portable package, run `JARVIS.exe --reset-api-key` from its console or PowerShell, then enter the replacement key at the hidden prompt.
 - `JARVIS_HOST`: bind address; defaults to `127.0.0.1`.
 - `JARVIS_PORT`: local port; defaults to `8765`.
