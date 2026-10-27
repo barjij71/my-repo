@@ -36,8 +36,8 @@ def _load_access_token() -> str:
 APP_TOKEN = _load_access_token()
 PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4.1-mini", "key_name": "OPENAI_API_KEY"},
-    "grok": {"label": "Grok / xAI", "base_url": "https://api.x.ai/v1", "default_model": "grok-4.1-fast", "key_name": "GROK_API_KEY"},
-    "claude": {"label": "Claude / Anthropic", "base_url": "https://api.anthropic.com/v1/", "default_model": "claude-sonnet-4-5", "key_name": "CLAUDE_API_KEY"},
+    "grok": {"label": "Grok / xAI", "base_url": "https://api.x.ai/v1", "default_model": "grok-4.6", "key_name": "GROK_API_KEY"},
+    "claude": {"label": "Claude / Anthropic", "base_url": "https://api.anthropic.com/v1/", "default_model": "claude-sonnet-4-6", "key_name": "CLAUDE_API_KEY"},
     "gemini": {"label": "Gemini / Google", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.5-flash", "key_name": "GEMINI_API_KEY"},
     "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "openrouter/auto", "key_name": "OPENROUTER_API_KEY"},
 }
@@ -99,7 +99,13 @@ def safe_provider_error(exc: Exception) -> tuple[str, str, str]:
     if name == "AuthenticationError":
         return ("authentication", "Provider rejected the API key.", "Check the provider key and replace it in local credential settings.")
     if name == "RateLimitError":
-        return ("rate_limit", "Provider rate limit or usage quota was reached.", "Check provider usage, billing, request limits, and retry-after guidance.")
+        # Inspect only structured error codes; never log or return the raw provider body.
+        code = str(getattr(exc, "code", "") or "").lower()
+        if any(marker in code for marker in ("insufficient_quota", "billing_hard_limit", "quota_exceeded", "usage_limit")):
+            return ("quota", "Provider usage quota or billing limit was reached.", "Check the provider dashboard for remaining credits, billing status, and monthly spend limits.")
+        if any(marker in code for marker in ("rate_limit_exceeded", "requests_per_minute", "tokens_per_minute")):
+            return ("rate_limit", "Provider request or token rate limit was reached.", "Wait for the provider reset window, reduce request frequency or output size, and check rate-limit headers.")
+        return ("rate_limit", "Provider reported a rate limit; the error code did not confirm whether it was a usage quota.", "Check provider usage and billing separately, then inspect rate-limit/reset guidance before retrying.")
     if name in {"APIConnectionError", "APITimeoutError"}:
         return ("connectivity", "Could not reach the AI provider in time.", "Check internet connectivity and provider status, then retry.")
     if name == "PermissionDeniedError":
