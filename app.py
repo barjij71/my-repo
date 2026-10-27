@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+import httpx
 from openai import OpenAI
 
 from computer_control import execute_tool, tool_schemas
@@ -98,9 +99,49 @@ def record_event(level: str, category: str, message: str, action: str = "") -> N
         _LOGS.appendleft(entry)
 
 
+class ProviderHTTPError(Exception):
+    """Sanitized upstream HTTP failure; never carries raw response text or credentials."""
+    def __init__(self, status_code: int, error_type: str = "") -> None:
+        super().__init__("AI provider HTTP request failed")
+        self.status_code = status_code
+        self.code = error_type[:80]
+
+
+def _claude_messages_request(api_key: str, model: str, messages: list[dict[str, str]], max_tokens: int) -> str:
+    """Use Anthropic's native Messages API instead of relying on OpenAI compatibility quirks."""
+    system_parts = [m["content"] for m in messages if m.get("role") == "system" and m.get("content")]
+    conversation = [{"role": m["role"], "content": m["content"]} for m in messages if m.get("role") in {"user", "assistant"}]
+    response = httpx.post(
+        "https://api.anthropic.com/v1/messages",
+        headers={"x-api-key": api_key, "anthropic-version": "2023-06-01", "content-type": "application/json"},
+        json={"model": model, "max_tokens": max_tokens, "system": "\\n".join(system_parts), "messages": conversation},
+        timeout=60.0,
+    )
+    if response.is_error:
+        error_type = ""
+        try:
+            payload = response.json()
+            error_type = str((payload.get("error") or {}).get("type", ""))
+        except (ValueError, AttributeError):
+            pass
+        raise ProviderHTTPError(response.status_code, error_type)
+    payload = response.json()
+    return "\\n".join(block.get("text", "") for block in payload.get("content", []) if block.get("type") == "text").strip()
+
+
 def safe_provider_error(exc: Exception) -> tuple[str, str, str]:
     """Return a safe category, user-facing explanation, and next step without raw provider data."""
     name = type(exc).__name__
+    status_code = getattr(exc, "status_code", None)
+    code = str(getattr(exc, "code", "") or "").lower()
+    if name == "AuthenticationError" or status_code == 401:
+        return ("authentication", "Provider rejected the API key.", "Check the provider key and replace it in local credential settings.")
+    if status_code == 402 or any(marker in code for marker in ("billing_error", "insufficient_quota", "billing_hard_limit", "quota_exceeded", "usage_limit")):
+        return ("quota", "Provider usage quota or billing limit was reached.", "Check the provider dashboard for remaining credits, billing status, and spend limits.")
+    if status_code == 429:
+        return ("rate_limit", "Provider request or token rate limit was reached.", "Wait for the provider reset window, reduce request frequency or output size, and check rate-limit headers.")
+    if status_code == 400:
+        return ("provider_request", "Provider rejected the request as invalid (HTTP 400). Check the model ID and provider API access.", "Verify that this model is available to your API key and that the provider account is active.")
     if name == "AuthenticationError":
         return ("authentication", "Provider rejected the API key.", "Check the provider key and replace it in local credential settings.")
     if name == "RateLimitError":
@@ -214,11 +255,18 @@ def test_provider_connection(authorization: str | None = Header(default=None)) -
     if not key:
         raise HTTPException(status_code=503, detail=f"No API key is configured for {PROVIDERS[provider]['label']}. Save a key in Provider Settings first.")
     try:
-        client = OpenAI(api_key=key, base_url=PROVIDERS[provider]["base_url"], timeout=20.0, max_retries=0)
-        result = client.chat.completions.create(model=model, messages=[{"role": "user", "content": "Reply with OK only."}], max_tokens=8)
-        usage = getattr(result, "usage", None)
+        if provider == "claude":
+            answer = _claude_messages_request(key, model, [{"role": "user", "content": "Reply with OK only."}], 16)
+            if not answer:
+                raise ProviderHTTPError(502, "empty_response")
+            usage_tokens = None
+        else:
+            client = OpenAI(api_key=key, base_url=PROVIDERS[provider]["base_url"], timeout=20.0, max_retries=0)
+            result = client.chat.completions.create(model=model, messages=[{"role": "user", "content": "Reply with OK only."}], max_tokens=16)
+            usage = getattr(result, "usage", None)
+            usage_tokens = getattr(usage, "total_tokens", None)
         record_event("INFO", "provider_test", f"Connection test succeeded for {PROVIDERS[provider]['label']} / {model}.")
-        return {"ok": True, "provider": provider, "model": model, "usage_tokens": getattr(usage, "total_tokens", None)}
+        return {"ok": True, "provider": provider, "model": model, "usage_tokens": usage_tokens}
     except Exception as exc:
         category, message, action = safe_provider_error(exc)
         record_event("ERROR", category, f"Provider test failed: {message}", action)
@@ -292,6 +340,9 @@ def _available_provider_order(primary: str) -> list[str]:
         return [p for p in [primary] + [x for x in _FAILOVER_ORDER if x != primary] if get_api_key(p) and _PROVIDER_COOLDOWNS.get(p, 0.0) <= now]
 
 def _call_provider(provider: str, model: str, api_key: str, instructions: str, history: list[dict[str, str]]) -> str:
+    if provider == "claude":
+        safe_instructions = instructions + " For this provider, local computer-control tools are unavailable. Never claim to have inspected or changed this PC; explain that local tools currently require the OpenAI provider."
+        return _claude_messages_request(api_key, model, [{"role": "system", "content": safe_instructions}] + history, 2000)
     client = OpenAI(api_key=api_key, base_url=PROVIDERS[provider]["base_url"], timeout=60.0, max_retries=0)
     if provider == "openai":
         response = client.responses.create(model=model, instructions=instructions, input=history, tools=tool_schemas())
@@ -353,8 +404,9 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
                     record_event("WARN", "provider_failover", f"Trying the next configured provider after {PROVIDERS[provider]['label']} returned {category}.", "The next configured provider will be tried automatically.")
                     continue
             record_event("ERROR", category, f"{PROVIDERS[provider]['label']}: {message}", action)
-            if category not in {"rate_limit", "quota", "connectivity"}:
-                break
+            # A broken model/key on one provider should not prevent trying another configured provider.
+            if index < len(candidates) - 1:
+                record_event("WARN", "provider_failover", f"Trying the next configured provider after {PROVIDERS[provider]['label']} returned {category}.", "The next configured provider will be tried automatically.")
     details = "; ".join(failures[:5])
     record_event("ERROR", "all_providers_failed", "No configured provider completed this request.", "Check each provider key, model access, quota, and retry window. Providers in cooldown return to rotation automatically when their cooldown expires.")
     raise HTTPException(status_code=502, detail="All configured providers failed or are cooling down. " + details + " Check Logs & Diagnostics for safe details.")
