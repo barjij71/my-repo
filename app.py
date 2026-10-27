@@ -34,7 +34,45 @@ def _load_access_token() -> str:
 
 
 APP_TOKEN = _load_access_token()
-MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip()
+PROVIDERS = {
+    "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4.1-mini", "key_name": "OPENAI_API_KEY"},
+    "grok": {"label": "Grok / xAI", "base_url": "https://api.x.ai/v1", "default_model": "grok-4.1-fast", "key_name": "GROK_API_KEY"},
+    "claude": {"label": "Claude / Anthropic", "base_url": "https://api.anthropic.com/v1/", "default_model": "claude-sonnet-4-5", "key_name": "CLAUDE_API_KEY"},
+    "gemini": {"label": "Gemini / Google", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.5-flash", "key_name": "GEMINI_API_KEY"},
+    "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "openrouter/auto", "key_name": "OPENROUTER_API_KEY"},
+}
+SETTING_PROVIDER = "JARVIS_PROVIDER"
+SETTING_MODEL = "JARVIS_MODEL"
+
+def credential_get(name: str) -> str | None:
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    try:
+        import keyring
+        return keyring.get_password("JARVIS", name)
+    except Exception:
+        return None
+
+def credential_set(name: str, value: str) -> None:
+    import keyring
+    keyring.set_password("JARVIS", name, value)
+
+def get_provider() -> str:
+    value = (credential_get(SETTING_PROVIDER) or "openai").strip().lower()
+    return value if value in PROVIDERS else "openai"
+
+def get_model(provider: str | None = None) -> str:
+    provider = provider or get_provider()
+    env_name = "OPENAI_MODEL" if provider == "openai" else ""
+    env_model = os.environ.get(env_name, "").strip() if env_name else ""
+    return env_model or credential_get(SETTING_MODEL) or PROVIDERS[provider]["default_model"]
+
+def get_api_key(provider: str | None = None) -> str | None:
+    provider = provider or get_provider()
+    return credential_get(PROVIDERS[provider]["key_name"])
+
+MODEL = get_model()
 
 # Bounded in-memory diagnostics. Never store prompts, API keys, auth headers, or raw provider errors.
 _LOG_LIMIT = 200
@@ -84,19 +122,10 @@ class ChatRequest(BaseModel):
     history: list[ChatMessage] = Field(default_factory=list)
 
 
-def get_api_key() -> str | None:
-    """Read the key from the process environment or Windows Credential Manager."""
-    value = os.environ.get("OPENAI_API_KEY", "").strip()
-    if value:
-        return value
-    if os.name == "nt":
-        try:
-            import keyring
-
-            return keyring.get_password("JARVIS", "OPENAI_API_KEY")
-        except Exception:
-            return None
-    return None
+class ProviderSettingsRequest(BaseModel):
+    provider: str
+    model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
+    api_key: Annotated[str, StringConstraints(max_length=1000)] = ""
 
 
 def verify_token(authorization: str | None) -> None:
@@ -125,10 +154,58 @@ def status(authorization: str | None = Header(default=None)) -> dict[str, str | 
     verify_token(authorization)
     return {
         "ready": bool(get_api_key()),
-        "model": MODEL,
-        "provider": os.environ.get("JARVIS_PROVIDER", "openai").strip().lower(),
+        "model": get_model(),
+        "provider": get_provider(),
+        "key_configured": bool(get_api_key()),
     }
 
+
+@app.get("/api/providers")
+def provider_settings(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    provider = get_provider()
+    return {"provider": provider, "providers": [{"id": key, "label": value["label"], "default_model": value["default_model"]} for key, value in PROVIDERS.items()], "model": get_model(provider), "key_configured": bool(get_api_key(provider)), "key_storage": "Windows Credential Manager / system keyring"}
+
+@app.post("/api/providers")
+def save_provider_settings(req: ProviderSettingsRequest, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    provider = req.provider.strip().lower()
+    if provider not in PROVIDERS:
+        raise HTTPException(status_code=422, detail="Unsupported provider.")
+    model = req.model.strip()
+    if not model or any(ord(ch) < 32 for ch in model):
+        raise HTTPException(status_code=422, detail="Enter a valid model ID.")
+    try:
+        credential_set(SETTING_PROVIDER, provider)
+        credential_set(SETTING_MODEL, model)
+        if req.api_key.strip():
+            credential_set(PROVIDERS[provider]["key_name"], req.api_key.strip())
+    except Exception:
+        record_event("ERROR", "credential_storage", "Could not save provider settings to the system credential store.", "Check that Windows Credential Manager is available, then retry.")
+        raise HTTPException(status_code=503, detail="Could not save settings securely to the system credential store. Check Windows Credential Manager.") from None
+    global MODEL
+    MODEL = model
+    record_event("INFO", "provider_settings", f"Provider configured: {PROVIDERS[provider]['label']} / {model}.", "Use Test Connection to check authentication, model access, and quota.")
+    return {"saved": True, "provider": provider, "model": model, "key_configured": bool(get_api_key(provider)), "key_saved": bool(req.api_key.strip())}
+
+@app.post("/api/providers/test")
+def test_provider_connection(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    provider = get_provider()
+    model = get_model(provider)
+    key = get_api_key(provider)
+    if not key:
+        raise HTTPException(status_code=503, detail=f"No API key is configured for {PROVIDERS[provider]['label']}. Save a key in Provider Settings first.")
+    try:
+        client = OpenAI(api_key=key, base_url=PROVIDERS[provider]["base_url"], timeout=20.0, max_retries=0)
+        result = client.chat.completions.create(model=model, messages=[{"role": "user", "content": "Reply with OK only."}], max_tokens=8)
+        usage = getattr(result, "usage", None)
+        record_event("INFO", "provider_test", f"Connection test succeeded for {PROVIDERS[provider]['label']} / {model}.")
+        return {"ok": True, "provider": provider, "model": model, "usage_tokens": getattr(usage, "total_tokens", None)}
+    except Exception as exc:
+        category, message, action = safe_provider_error(exc)
+        record_event("ERROR", category, f"Provider test failed: {message}", action)
+        raise HTTPException(status_code=502, detail=f"{PROVIDERS[provider]['label']} test failed: {message} {action}") from None
 
 @app.get("/api/logs")
 def get_logs(authorization: str | None = Header(default=None)) -> dict[str, object]:
@@ -183,7 +260,9 @@ def chat(
     authorization: str | None = Header(default=None),
 ) -> dict[str, str]:
     verify_token(authorization)
-    api_key = get_api_key()
+    provider = get_provider()
+    model = get_model(provider)
+    api_key = get_api_key(provider)
     if not api_key:
         record_event("ERROR", "configuration", "No AI API key is configured.", "Add a provider key using local credential setup.")
         raise HTTPException(
@@ -196,9 +275,9 @@ def chat(
         history.append({"role": item.role, "content": item.content})
 
     history.append({"role": "user", "content": req.message})
-    record_event("INFO", "request", "AI request started.", "Wait for the response or inspect provider configuration if it fails.")
+    record_event("INFO", "request", f"AI request started with {PROVIDERS[provider]['label']} / {model}.", "Wait for the response or inspect provider configuration if it fails.")
     try:
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(api_key=api_key, base_url=PROVIDERS[provider]["base_url"], timeout=60.0, max_retries=0)
         instructions = (
             "You are JARVIS, a careful Windows personal assistant. Reply in Moroccan Darija when the user uses Darija; "
             "otherwise use the user's language. Be practical and concise. Use the available local Windows tools for approved app/site opening, opening existing user-selected paths, copying plain text to clipboard without executing it, inspecting drives/processes/installed apps, and performing lightweight static triage on one selected file without installing anything, and scanning a user-selected file or folder with resource-bounded ClamAV when installed, or explaining official scanner alternatives if it is missing. Static triage checks file metadata and selected suspicious strings without executing or uploading the file; these heuristics are incomplete and are not an antivirus verdict. The scanner enables PUA detection, which can flag legitimate penetration-testing tools; interpret detections as evidence to review, not proof of malicious intent. File create/read/write remains limited to JARVISWorkspace. Local memory is stored in a SQLite file on this PC, not in the repository. Call save_memory only when the user explicitly asks to remember/save a specific non-secret fact; never save passwords, API keys, access tokens, authentication codes, or private keys. If asked what is remembered, use search_memories or list_memories rather than guessing. Only forget the exact memory ID the user identified or confirmed; never guess an ID or clear all memory from a vague request. Explain that local memory is not encrypted by JARVIS and should not contain sensitive secrets. "
@@ -206,37 +285,28 @@ def chat(
             "DISM/SFC repair, app uninstall, and closing a process are staged actions: first explain the exact action and consequences and ask the user to confirm that specific action. Do not call confirm_pending_action until the latest user message explicitly confirms that exact staged action; a general request is not confirmation. If the user declines, cancel it. "
             "Never execute arbitrary shell commands, copy-pasted commands, or files from paths; clipboard copy is text-only. Never force-kill processes. Never remove security products, drivers, shared runtimes, Windows components, or files manually as virus cleanup. Use an available reputable scanner such as ClamAV or ESET Online Scanner; if no scanner is installed, explain the official download options and do not download or run installers automatically. Never delete detections automatically. If the user requests removal, stage moving only that exact reviewed file to reversible JARVIS quarantine, verify its SHA-256 has not changed since review, and require explicit confirmation for that exact action. Never permanently delete files. Explain that Metasploit and other penetration-testing tools can be legitimate and may trigger PUA detections. The on-demand ClamAV scan runs at below-normal process priority with file-count, recursion, size, and timeout limits; it does not automatically update signatures to avoid unexpected load. Do not claim RAM was freed unless a process close is confirmed; process inventory is read-only. Explain that admin permissions may be required for system repair."
         )
-        tools = tool_schemas()
-        response = client.responses.create(
-            model=MODEL,
-            instructions=instructions,
-            input=history,
-            tools=tools,
-        )
-        # Bound tool execution to prevent runaway automation loops.
-        for _ in range(6):
-            calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
-            if not calls:
-                break
-            outputs = []
-            for call in calls:
-                result = execute_tool(call.name, call.arguments)
-                outputs.append({
-                    "type": "function_call_output",
-                    "call_id": call.call_id,
-                    "output": result,
-                })
-            response = client.responses.create(
-                model=MODEL,
-                instructions=instructions,
-                previous_response_id=response.id,
-                input=outputs,
-                tools=tools,
-            )
-        answer = response.output_text
+        if provider == "openai":
+            tools = tool_schemas()
+            response = client.responses.create(model=model, instructions=instructions, input=history, tools=tools)
+            # Bound tool execution to prevent runaway automation loops.
+            for _ in range(6):
+                calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
+                if not calls:
+                    break
+                outputs = []
+                for call in calls:
+                    result = execute_tool(call.name, call.arguments)
+                    outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": result})
+                response = client.responses.create(model=model, instructions=instructions, previous_response_id=response.id, input=outputs, tools=tools)
+            answer = response.output_text
+        else:
+            # Use the common Chat Completions interface; local computer tools are intentionally disabled for compatibility providers.
+            messages = [{"role": "system", "content": instructions}] + history
+            response = client.chat.completions.create(model=model, messages=messages, max_tokens=2000)
+            answer = response.choices[0].message.content or ""
         if not answer:
             answer = "ما قدرتش نخرج جواب نصّي هاد المرة."
-        record_event("INFO", "request", "AI response completed successfully.")
+        record_event("INFO", "request", f"AI response completed successfully via {PROVIDERS[provider]['label']} / {model}.")
         return {"reply": answer}
     except HTTPException:
         raise
