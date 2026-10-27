@@ -160,7 +160,7 @@ def health() -> dict[str, str]:
 
 
 @app.get("/api/status")
-def status(authorization: str | None = Header(default=None)) -> dict[str, str | bool]:
+def status(authorization: str | None = Header(default=None)) -> dict[str, object]:
     verify_token(authorization)
     configured = [p for p in _FAILOVER_ORDER if get_api_key(p)]
     return {
