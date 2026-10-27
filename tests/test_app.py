@@ -298,7 +298,7 @@ def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
         json={"message": "hello", "history": []},
     )
     assert response.status_code == 200
-    assert response.json()["reply"] == "Recovered using Grok."
+    assert response.json()["reply"] == "Recovered using Claude."
     assert calls == ["openai", "claude"]
     logs = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
     assert "provider_failover" in logs
@@ -307,7 +307,7 @@ def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
 
 
 def test_provider_in_cooldown_is_skipped_and_returns_after_expiry(monkeypatch):
-    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "grok"} else None)
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "claude"} else None)
     clock = {"now": 100.0}
     monkeypatch.setattr(jarvis.time, "monotonic", lambda: clock["now"])
     with jarvis._FAILOVER_LOCK:
