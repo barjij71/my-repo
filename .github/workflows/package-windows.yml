@@ -53,7 +53,7 @@ jobs:
 
           1. Extract the entire JARVIS folder from this ZIP to a folder you control.
           2. Double-click JARVIS.exe. Keep the console window open while using JARVIS.
-          3. On first launch, enter your OpenAI API key in the hidden prompt. It is stored in Windows Credential Manager. If you see `AuthenticationError`, close JARVIS and run `JARVIS.exe --reset-api-key` from PowerShell in this folder, then enter a replacement API key.
+          3. On first launch, complete the local access-token setup. Connect to JARVIS, open Settings & Access → Provider Settings, then add and save an API key for each provider you want to use (OpenAI, Grok/xAI, Claude/Anthropic, Gemini/Google, or OpenRouter). Keys are stored in Windows Credential Manager. Select a provider and model, save it, then use Test Connection. JARVIS automatically tries other configured providers when one hits a rate limit/quota or transient connection failure, cools down the failed provider, and returns it to rotation after cooldown expiry.
           4. Copy the local access token shown in the console into the JARVIS browser page and select Connect.
           5. For hands-free live conversation, select LIVE OFF once in the page, allow microphone access, and speak naturally; recognized speech is submitted automatically and replies are spoken. Select LIVE ON to stop. Browser speech recognition may use an online provider.
           6. Close the console or press Ctrl+C to stop JARVIS.
