@@ -4,6 +4,7 @@ import hmac
 import os
 import threading
 import time
+from email.utils import parsedate_to_datetime
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -116,6 +117,9 @@ def safe_provider_error(exc: Exception) -> tuple[str, str, str]:
         return ("permissions", "The API key does not have permission for this model or endpoint.", "Check project access and the selected model.")
     if name == "NotFoundError":
         return ("model", "The configured model or endpoint was not found.", "Check the model ID and provider endpoint.")
+    status_code = getattr(exc, "status_code", None)
+    if isinstance(status_code, int) and 500 <= status_code <= 599:
+        return ("connectivity", "The AI provider returned a temporary server-side error.", "JARVIS can try another configured provider; check the provider status page if the issue continues.")
     return ("provider_error", f"AI provider request failed ({name}).", "Open Logs & Diagnostics and check provider settings.")
 
 app = FastAPI(title="JARVIS Personal Assistant", version="0.1.0")
@@ -274,7 +278,13 @@ def _provider_cooldown_seconds(exc: Exception) -> float:
     try:
         return max(5.0, min(float(retry_after), 3600.0))
     except (TypeError, ValueError):
-        return 60.0
+        try:
+            reset_at = parsedate_to_datetime(str(retry_after))
+            if reset_at.tzinfo is None:
+                reset_at = reset_at.replace(tzinfo=timezone.utc)
+            return max(5.0, min((reset_at - datetime.now(timezone.utc)).total_seconds(), 3600.0))
+        except (TypeError, ValueError, OverflowError):
+            return 60.0
 
 def _available_provider_order(primary: str) -> list[str]:
     now = time.monotonic()
