@@ -22,6 +22,9 @@ def test_home_page_exposes_optional_push_to_talk_and_spoken_replies():
     assert 'id="speakToggle"' in response.text
     assert "SpeechRecognition" in response.text
     assert "speechSynthesis" in response.text
+    assert "selectedVoice=hasArabic?(arabicVoice||voices.find(v=>v.default)||voices[0])" in response.text
+    assert "if(synth.paused)synth.resume()" in response.text
+    assert "browser could not play speech" in response.text
     assert "press EXECUTE to send it" in response.text
 
 
