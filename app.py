@@ -307,7 +307,8 @@ def chat(
             answer = response.output_text
         else:
             # Use the common Chat Completions interface; local computer tools are intentionally disabled for compatibility providers.
-            messages = [{"role": "system", "content": instructions}] + history
+            compatibility_instructions = instructions + " For this provider, local computer-control tools are unavailable. Never claim to have inspected or changed this PC; explain that local tools currently require the OpenAI provider."
+            messages = [{"role": "system", "content": compatibility_instructions}] + history
             response = client.chat.completions.create(model=model, messages=messages, max_tokens=2000)
             answer = response.choices[0].message.content or ""
         if not answer:
