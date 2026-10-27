@@ -83,3 +83,43 @@ def test_system_metrics_returns_expected_fields_with_valid_token(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     assert set(payload) == {"cpu_percent", "memory_percent", "disk_percent", "uptime"}
+
+
+
+def test_logs_endpoint_requires_access_token(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    response = client.get("/api/logs")
+    assert response.status_code == 401
+
+
+def test_logs_endpoint_returns_safe_diagnostic_entries(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    jarvis._LOGS.clear()
+    jarvis.record_event("ERROR", "rate_limit", "Provider usage limit reached.", "Check usage and retry.")
+    response = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["count"] == 1
+    assert payload["entries"][0]["category"] == "rate_limit"
+    assert "action" in payload["entries"][0]
+    assert "content" not in payload["entries"][0]
+    assert "api_key" not in payload["entries"][0]
+
+
+def test_clear_logs_requires_access_token_and_clears_events(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    jarvis._LOGS.clear()
+    jarvis.record_event("INFO", "request", "Test event.")
+    response = client.delete("/api/logs", headers={"Authorization": "Bearer correct-token"})
+    assert response.status_code == 200
+    assert response.json()["cleared"] == 1
+    # The clear operation leaves a single audit event confirming that the user cleared logs.
+    assert client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).json()["count"] == 1
+
+
+def test_rate_limit_error_has_actionable_safe_diagnostic():
+    error_type = type("RateLimitError", (Exception,), {})
+    category, message, action = jarvis.safe_provider_error(error_type())
+    assert category == "rate_limit"
+    assert "quota" in message.lower()
+    assert "billing" in action.lower()
