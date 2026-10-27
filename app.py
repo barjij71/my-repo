@@ -340,7 +340,7 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
             if provider != primary:
                 record_event("WARN", "provider_failover", f"Automatic failover used {PROVIDERS[provider]['label']} / {model} after the preferred provider failed.", "Check the preferred provider's quota and retry window in its dashboard.")
             record_event("INFO", "request", f"AI response completed successfully via {PROVIDERS[provider]['label']} / {model}.")
-            return {"reply": answer}
+            return {"reply": answer, "provider": provider, "fallback_from": primary if provider != primary else ""}
         except Exception as exc:
             category, message, action = safe_provider_error(exc)
             failures.append(f"{PROVIDERS[provider]['label']}: {message}")
