@@ -123,3 +123,91 @@ def test_rate_limit_error_has_actionable_safe_diagnostic():
     assert category == "rate_limit"
     assert "quota" in message.lower()
     assert "billing" in action.lower()
+
+
+
+def test_provider_settings_requires_authentication(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    assert client.get("/api/providers").status_code == 401
+    assert client.post("/api/providers/test", json={}).status_code == 401
+
+
+def test_provider_list_is_safe_and_includes_requested_providers(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    response = client.get("/api/providers", headers={"Authorization": "Bearer correct-token"})
+    assert response.status_code == 200
+    payload = response.json()
+    ids = {item["id"] for item in payload["providers"]}
+    assert {"openai", "grok", "claude", "gemini", "openrouter"} <= ids
+    assert "api_key" not in payload
+    assert "key" not in payload
+
+
+def test_save_provider_settings_never_returns_api_key(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    store = {}
+    monkeypatch.setattr(jarvis, "credential_set", lambda name, value: store.__setitem__(name, value))
+    monkeypatch.setattr(jarvis, "credential_get", lambda name: store.get(name) or ( "test-key" if name == "GEMINI_API_KEY" else None))
+    response = client.post(
+        "/api/providers",
+        headers={"Authorization": "Bearer correct-token"},
+        json={"provider": "gemini", "model": "gemini-2.5-flash", "api_key": "do-not-return-this"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "gemini"
+    assert payload["key_configured"] is True
+    assert "do-not-return-this" not in response.text
+    assert store["GEMINI_API_KEY"] == "do-not-return-this"
+
+
+def test_unknown_provider_is_rejected(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    response = client.post(
+        "/api/providers",
+        headers={"Authorization": "Bearer correct-token"},
+        json={"provider": "unknown", "model": "model-x", "api_key": "secret"},
+    )
+    assert response.status_code == 422
+
+
+def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    monkeypatch.setattr(jarvis, "get_provider", lambda: "grok")
+    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "grok-test-model")
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "never-log-this-secret")
+
+    class FakeUsage:
+        total_tokens = 3
+
+    class FakeMessage:
+        content = "OK"
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeResult:
+        choices = [FakeChoice()]
+        usage = FakeUsage()
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            assert kwargs["model"] == "grok-test-model"
+            return FakeResult()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        def __init__(self, **kwargs):
+            assert kwargs["api_key"] == "never-log-this-secret"
+            assert kwargs["base_url"] == "https://api.x.ai/v1"
+            self.chat = FakeChat()
+
+    monkeypatch.setattr(jarvis, "OpenAI", FakeClient)
+    jarvis._LOGS.clear()
+    response = client.post("/api/providers/test", headers={"Authorization": "Bearer correct-token"}, json={})
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    logs = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
+    assert "never-log-this-secret" not in logs
