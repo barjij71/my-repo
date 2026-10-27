@@ -13,6 +13,7 @@ The main branch contains the initial Windows dashboard and restricted computer-c
 - Windows tools: open approved apps/sites and existing files/folders on available drives (C:, D:, etc.); copy plain text, commands, and paths to clipboard without executing them; stage confirmed file copies between available drives without overwriting an existing destination; inspect drives, installed apps, and RAM-heavy processes; run a dependency-free static triage on one file (SHA-256, file-type hint, and suspicious-string indicators, without execution or upload), and scan selected files/folders on demand with resource-bounded ClamAV (low process priority, PUA detection, file-count/size/recursion/timeout limits, no automatic signature update), with official ClamAV/ESET options if no scanner is found; stage moving one exact reviewed file to reversible quarantine only after explicit confirmation, verifying its SHA-256 first; stage Windows repair, app uninstall, and graceful process-close actions for explicit confirmation. File create/read/write remains limited to `Documents\\JARVISWorkspace`
 - Windows Credential Manager integration for the OpenAI API key and local access token
 - Authenticated local CPU, memory, disk, and uptime metrics for the dashboard
+- A Logs & Diagnostics dashboard page with severity filters, safe report copying, user-triggered log clearing, and actionable provider error guidance. The bounded in-memory log excludes prompts, API keys, and access tokens and is cleared when the backend restarts.
 - Automated API and computer-tool tests; GitHub Actions runs on Windows and Linux
 - Safe defaults: the server listens on `127.0.0.1`
 
@@ -57,7 +58,7 @@ GitHub Actions runs the test suite on Windows and Ubuntu for pushes to `main` an
 - Saved memories are stored in a local SQLite database and are not encrypted by JARVIS; never save passwords, API keys, access tokens, authentication codes, or private keys. Secret detection is heuristic, not a guarantee.
 - API key and access token are stored via Windows Credential Manager.
 - The local web server binds to loopback by default.
-- Provider exceptions are sanitized before returning errors to the browser.
+- Provider exceptions are classified into safe, actionable diagnostics before returning errors to the browser. The Logs & Diagnostics API requires the local bearer token and never stores raw prompts, API keys, authorization headers, or raw provider error bodies.
 - Arbitrary shell execution, direct command execution from the clipboard, force-killing processes, manual virus-file deletion, and arbitrary file editing outside `Documents\\JARVISWorkspace` are not enabled. Repair/uninstall/process-close actions are staged and require explicit confirmation. System repair may require launching JARVIS as Administrator. Defender scan/remediation is managed by Windows Security; review Protection history. Closing selected applications can free RAM, but there is no unsafe 'RAM cleaner' or automatic mass process killing. Persistent chat transcript/history, reminders/tasks, general mouse/keyboard automation, screenshot understanding, and full browser automation are not implemented yet. Explicitly saved fact memories persist locally. Voice input/output is optional and depends on browser support; no background listening is used.
 - Do not use this starter build to run untrusted code.
 
