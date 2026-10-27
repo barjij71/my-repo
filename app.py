@@ -39,7 +39,6 @@ def _load_access_token() -> str:
 APP_TOKEN = _load_access_token()
 PROVIDERS = {
     "openai": {"label": "OpenAI", "base_url": "https://api.openai.com/v1", "default_model": "gpt-4.1-mini", "key_name": "OPENAI_API_KEY"},
-    "grok": {"label": "Grok / xAI", "base_url": "https://api.x.ai/v1", "default_model": "grok-4.6", "key_name": "GROK_API_KEY"},
     "claude": {"label": "Claude / Anthropic", "base_url": "https://api.anthropic.com/v1/", "default_model": "claude-sonnet-4-6", "key_name": "CLAUDE_API_KEY"},
     "gemini": {"label": "Gemini / Google", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "default_model": "gemini-2.5-flash", "key_name": "GEMINI_API_KEY"},
     "openrouter": {"label": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "default_model": "openrouter/auto", "key_name": "OPENROUTER_API_KEY"},
@@ -48,7 +47,7 @@ SETTING_PROVIDER = "JARVIS_PROVIDER"
 SETTING_MODEL = "JARVIS_MODEL"
 _FAILOVER_LOCK = threading.Lock()
 _PROVIDER_COOLDOWNS: dict[str, float] = {}
-_FAILOVER_ORDER = ["openai", "grok", "claude", "gemini", "openrouter"]
+_FAILOVER_ORDER = ["openai", "claude", "gemini", "openrouter"]
 
 def credential_get(name: str) -> str | None:
     value = os.environ.get(name, "").strip()
