@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import hmac
 import os
+import threading
+from collections import deque
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
 
@@ -32,6 +35,40 @@ def _load_access_token() -> str:
 
 APP_TOKEN = _load_access_token()
 MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini").strip()
+
+# Bounded in-memory diagnostics. Never store prompts, API keys, auth headers, or raw provider errors.
+_LOG_LIMIT = 200
+_LOGS: deque[dict[str, str]] = deque(maxlen=_LOG_LIMIT)
+_LOG_LOCK = threading.Lock()
+
+
+def record_event(level: str, category: str, message: str, action: str = "") -> None:
+    entry = {
+        "id": os.urandom(8).hex(),
+        "time": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "level": level[:16],
+        "category": category[:48],
+        "message": message[:240],
+        "action": action[:240],
+    }
+    with _LOG_LOCK:
+        _LOGS.appendleft(entry)
+
+
+def safe_provider_error(exc: Exception) -> tuple[str, str, str]:
+    """Return a safe category, user-facing explanation, and next step without raw provider data."""
+    name = type(exc).__name__
+    if name == "AuthenticationError":
+        return ("authentication", "Provider rejected the API key.", "Check the provider key and replace it in local credential settings.")
+    if name == "RateLimitError":
+        return ("rate_limit", "Provider rate limit or usage quota was reached.", "Check provider usage, billing, request limits, and retry-after guidance.")
+    if name in {"APIConnectionError", "APITimeoutError"}:
+        return ("connectivity", "Could not reach the AI provider in time.", "Check internet connectivity and provider status, then retry.")
+    if name == "PermissionDeniedError":
+        return ("permissions", "The API key does not have permission for this model or endpoint.", "Check project access and the selected model.")
+    if name == "NotFoundError":
+        return ("model", "The configured model or endpoint was not found.", "Check the model ID and provider endpoint.")
+    return ("provider_error", f"AI provider request failed ({name}).", "Open Logs & Diagnostics and check provider settings.")
 
 app = FastAPI(title="JARVIS Personal Assistant", version="0.1.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
@@ -89,7 +126,26 @@ def status(authorization: str | None = Header(default=None)) -> dict[str, str | 
     return {
         "ready": bool(get_api_key()),
         "model": MODEL,
+        "provider": os.environ.get("JARVIS_PROVIDER", "openai").strip().lower(),
     }
+
+
+@app.get("/api/logs")
+def get_logs(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    with _LOG_LOCK:
+        entries = list(_LOGS)
+    return {"entries": entries, "count": len(entries), "limit": _LOG_LIMIT}
+
+
+@app.delete("/api/logs")
+def clear_logs(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    with _LOG_LOCK:
+        cleared = len(_LOGS)
+        _LOGS.clear()
+    record_event("INFO", "diagnostics", "Local diagnostic log was cleared by the user.")
+    return {"cleared": cleared, "count": 1}
 
 
 @app.get("/api/system")
@@ -129,9 +185,10 @@ def chat(
     verify_token(authorization)
     api_key = get_api_key()
     if not api_key:
+        record_event("ERROR", "configuration", "No AI API key is configured.", "Add a provider key using local credential setup.")
         raise HTTPException(
             status_code=503,
-            detail="OPENAI_API_KEY is not configured in the local environment.",
+            detail="No AI API key is configured. Add a provider key using local credential setup.",
         )
 
     history: list[dict[str, str]] = []
@@ -139,6 +196,7 @@ def chat(
         history.append({"role": item.role, "content": item.content})
 
     history.append({"role": "user", "content": req.message})
+    record_event("INFO", "request", "AI request started.", "Wait for the response or inspect provider configuration if it fails.")
     try:
         client = OpenAI(api_key=api_key)
         instructions = (
@@ -178,15 +236,15 @@ def chat(
         answer = response.output_text
         if not answer:
             answer = "ما قدرتش نخرج جواب نصّي هاد المرة."
+        record_event("INFO", "request", "AI response completed successfully.")
         return {"reply": answer}
     except HTTPException:
         raise
     except Exception as exc:
-        # Deliberately avoid leaking API keys, request payloads, or provider diagnostics.
-        raise HTTPException(
-            status_code=502,
-            detail=f"OpenAI request failed ({type(exc).__name__}). Check local configuration and connectivity.",
-        ) from None
+        # Keep provider details and request content private; log only a safe classification.
+        category, message, action = safe_provider_error(exc)
+        record_event("ERROR", category, message, action)
+        raise HTTPException(status_code=502, detail=f"{message} {action}") from None
 
 
 if __name__ == "__main__":
