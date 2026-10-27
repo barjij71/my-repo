@@ -162,11 +162,14 @@ def health() -> dict[str, str]:
 @app.get("/api/status")
 def status(authorization: str | None = Header(default=None)) -> dict[str, str | bool]:
     verify_token(authorization)
+    configured = [p for p in _FAILOVER_ORDER if get_api_key(p)]
     return {
-        "ready": bool(get_api_key()),
+        "ready": bool(configured),
         "model": get_model(),
         "provider": get_provider(),
         "key_configured": bool(get_api_key()),
+        "configured_providers": configured,
+        "automatic_failover": True,
     }
 
 
@@ -196,7 +199,7 @@ def save_provider_settings(req: ProviderSettingsRequest, authorization: str | No
     global MODEL
     MODEL = model
     record_event("INFO", "provider_settings", f"Provider configured: {PROVIDERS[provider]['label']} / {model}.", "Use Test Connection to check authentication, model access, and quota.")
-    return {"saved": True, "provider": provider, "model": model, "key_configured": bool(get_api_key(provider)), "key_saved": bool(req.api_key.strip())}
+    return {"saved": True, "provider": provider, "model": model, "key_configured": bool(get_api_key(provider)), "configured_providers": [p for p in _FAILOVER_ORDER if get_api_key(p)], "automatic_failover": True, "key_saved": bool(req.api_key.strip())}
 
 @app.post("/api/providers/test")
 def test_provider_connection(authorization: str | None = Header(default=None)) -> dict[str, object]:
