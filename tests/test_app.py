@@ -211,3 +211,50 @@ def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch)
     assert response.json()["ok"] is True
     logs = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
     assert "never-log-this-secret" not in logs
+
+
+
+def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    monkeypatch.setattr(jarvis, "get_provider", lambda: "openai")
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "grok"} else None)
+    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "model-" + (provider or "openai"))
+    jarvis._PROVIDER_COOLDOWNS.clear()
+    calls = []
+
+    class RateLimitError(Exception):
+        code = "rate_limit_exceeded"
+
+    def fake_call(provider, model, api_key, instructions, history):
+        calls.append(provider)
+        if provider == "openai":
+            raise RateLimitError("private upstream body must not be logged")
+        return "Recovered using Grok."
+
+    monkeypatch.setattr(jarvis, "_call_provider", fake_call)
+    response = client.post(
+        "/api/chat",
+        headers={"Authorization": "Bearer correct-token"},
+        json={"message": "hello", "history": []},
+    )
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Recovered using Grok."
+    assert calls == ["openai", "grok"]
+    logs = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
+    assert "provider_failover" in logs
+    assert "private upstream body" not in logs
+    assert "openai" in jarvis._PROVIDER_COOLDOWNS
+
+
+def test_provider_in_cooldown_is_skipped_and_returns_after_expiry(monkeypatch):
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "grok"} else None)
+    clock = {"now": 100.0}
+    monkeypatch.setattr(jarvis.time, "monotonic", lambda: clock["now"])
+    with jarvis._FAILOVER_LOCK:
+        jarvis._PROVIDER_COOLDOWNS.clear()
+        jarvis._PROVIDER_COOLDOWNS["openai"] = 150.0
+    assert "openai" not in jarvis._available_provider_order("openai")
+    clock["now"] = 151.0
+    assert "openai" in jarvis._available_provider_order("grok")
+    with jarvis._FAILOVER_LOCK:
+        jarvis._PROVIDER_COOLDOWNS.clear()
