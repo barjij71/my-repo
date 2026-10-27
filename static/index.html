@@ -193,7 +193,7 @@ main{min-width:0;padding:14px 16px 95px}.topbar{display:flex;align-items:center;
  async function sendMessage(rawText){
   const text=String(rawText||'').trim();if(!text||busy||!connected)return;
   showError('');addMessage('user',text);history.push({role:'user',content:text});history=history.slice(-12);message.value='';setBusy(true);addFeed('Task received',text.slice(0,130),'INFO');
-  try{const d=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text,history:history.slice(0,-1)})});addMessage('assistant',d.reply);history.push({role:'assistant',content:d.reply});history=history.slice(-12);addFeed('Response received','JARVIS returned a result for your request','DONE');speakReply(d.reply)}
+  try{const d=await api('/api/chat',{method:'POST',body:JSON.stringify({message:text,history:history.slice(0,-1)})});addMessage('assistant',d.reply);history.push({role:'assistant',content:d.reply});history=history.slice(-12);if(d.fallback_from){addFeed('Automatic provider failover','Preferred provider temporarily unavailable; response completed using '+d.provider,'WARN')}addFeed('Response received','JARVIS returned a result for your request','DONE');speakReply(d.reply)}
   catch(e){showError(e.message);addFeed('Request failed',e.message,'WARN')}
   finally{setBusy(false);if(liveMode&&!('speechSynthesis' in window&&window.speechSynthesis.speaking))startListening();else message.focus()}
  }
