@@ -141,7 +141,8 @@ def test_provider_list_is_safe_and_includes_requested_providers(monkeypatch):
     assert response.status_code == 200
     payload = response.json()
     ids = {item["id"] for item in payload["providers"]}
-    assert {"openai", "grok", "claude", "gemini", "openrouter"} <= ids
+    assert {"openai", "claude", "gemini", "openrouter"} <= ids
+    assert "grok" not in ids
     assert "api_key" not in payload
     assert "key" not in payload
 
@@ -164,7 +165,7 @@ def test_save_provider_settings_never_returns_api_key(monkeypatch):
     assert store["GEMINI_API_KEY"] == "do-not-return-this"
 
 
-def test_unknown_provider_is_rejected(monkeypatch):
+def test_unknown_and_removed_grok_provider_are_rejected(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
     response = client.post(
         "/api/providers",
@@ -172,12 +173,18 @@ def test_unknown_provider_is_rejected(monkeypatch):
         json={"provider": "unknown", "model": "model-x", "api_key": "secret"},
     )
     assert response.status_code == 422
+    grok_response = client.post(
+        "/api/providers",
+        headers={"Authorization": "Bearer correct-token"},
+        json={"provider": "grok", "model": "grok-4.6", "api_key": "unused"},
+    )
+    assert grok_response.status_code == 422
 
 
 def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
-    monkeypatch.setattr(jarvis, "get_provider", lambda: "grok")
-    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "grok-test-model")
+    monkeypatch.setattr(jarvis, "get_provider", lambda: "openrouter")
+    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "openrouter-test-model")
     monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "never-log-this-secret")
 
     class FakeUsage:
@@ -195,7 +202,7 @@ def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch)
 
     class FakeCompletions:
         def create(self, **kwargs):
-            assert kwargs["model"] == "grok-test-model"
+            assert kwargs["model"] == "openrouter-test-model"
             return FakeResult()
 
     class FakeChat:
@@ -204,7 +211,7 @@ def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch)
     class FakeClient:
         def __init__(self, **kwargs):
             assert kwargs["api_key"] == "never-log-this-secret"
-            assert kwargs["base_url"] == "https://api.x.ai/v1"
+            assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
             self.chat = FakeChat()
 
     monkeypatch.setattr(jarvis, "OpenAI", FakeClient)
@@ -270,7 +277,7 @@ def test_bad_request_from_one_provider_fails_over_to_next_provider(monkeypatch):
 def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
     monkeypatch.setattr(jarvis, "get_provider", lambda: "openai")
-    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "grok"} else None)
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"openai", "claude"} else None)
     monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "model-" + (provider or "openai"))
     jarvis._PROVIDER_COOLDOWNS.clear()
     calls = []
@@ -282,7 +289,7 @@ def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
         calls.append(provider)
         if provider == "openai":
             raise RateLimitError("private upstream body must not be logged")
-        return "Recovered using Grok."
+        return "Recovered using Claude."
 
     monkeypatch.setattr(jarvis, "_call_provider", fake_call)
     response = client.post(
@@ -292,7 +299,7 @@ def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
     )
     assert response.status_code == 200
     assert response.json()["reply"] == "Recovered using Grok."
-    assert calls == ["openai", "grok"]
+    assert calls == ["openai", "claude"]
     logs = client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
     assert "provider_failover" in logs
     assert "private upstream body" not in logs
@@ -308,6 +315,6 @@ def test_provider_in_cooldown_is_skipped_and_returns_after_expiry(monkeypatch):
         jarvis._PROVIDER_COOLDOWNS["openai"] = 150.0
     assert "openai" not in jarvis._available_provider_order("openai")
     clock["now"] = 151.0
-    assert "openai" in jarvis._available_provider_order("grok")
+    assert "openai" in jarvis._available_provider_order("claude")
     with jarvis._FAILOVER_LOCK:
         jarvis._PROVIDER_COOLDOWNS.clear()
