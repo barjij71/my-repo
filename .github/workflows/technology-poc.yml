@@ -1,0 +1,72 @@
+name: JARVIS technology proof of concept
+
+on:
+  push:
+    branches: [barjij71-jarvis-for-windows]
+    paths:
+      - "prototype/**"
+      - "docs/architecture/technology-decision.md"
+      - ".github/workflows/technology-poc.yml"
+  pull_request:
+    paths:
+      - "prototype/**"
+      - "docs/architecture/technology-decision.md"
+      - ".github/workflows/technology-poc.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-and-build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.8"
+          cache: true
+      - name: Accept Android SDK licenses
+        run: yes | flutter doctor --android-licenses
+      - name: Resolve dependencies
+        working-directory: prototype/flutter
+        run: flutter pub get
+      - name: Analyze and test
+        working-directory: prototype/flutter
+        run: |
+          flutter analyze
+          flutter test
+      - name: Build Android API 36 prototype
+        working-directory: prototype/flutter
+        run: flutter build apk --debug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-poc-android-apk
+          path: prototype/flutter/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.8"
+          cache: true
+      - name: Resolve dependencies
+        working-directory: prototype/flutter
+        run: flutter pub get
+      - name: Build Windows desktop prototype
+        working-directory: prototype/flutter
+        run: flutter build windows
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-poc-windows
+          path: prototype/flutter/build/windows/x64/runner/Release/
+          if-no-files-found: error
+          retention-days: 7
