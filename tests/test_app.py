@@ -217,6 +217,56 @@ def test_provider_test_uses_configured_provider_without_logging_key(monkeypatch)
 
 
 
+def test_claude_provider_test_uses_native_anthropic_messages_api(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    monkeypatch.setattr(jarvis, "get_provider", lambda: "claude")
+    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "claude-sonnet-4-6")
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "claude-test-secret")
+    calls = []
+
+    class FakeResponse:
+        is_error = False
+        def json(self):
+            return {"content": [{"type": "text", "text": "OK"}]}
+
+    def fake_post(url, **kwargs):
+        calls.append((url, kwargs))
+        return FakeResponse()
+
+    monkeypatch.setattr(jarvis.httpx, "post", fake_post)
+    jarvis._LOGS.clear()
+    response = client.post("/api/providers/test", headers={"Authorization": "Bearer correct-token"}, json={})
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert calls[0][0] == "https://api.anthropic.com/v1/messages"
+    assert calls[0][1]["headers"]["x-api-key"] == "claude-test-secret"
+    assert calls[0][1]["headers"]["anthropic-version"] == "2023-06-01"
+    assert calls[0][1]["json"]["model"] == "claude-sonnet-4-6"
+    assert "claude-test-secret" not in client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
+
+
+def test_bad_request_from_one_provider_fails_over_to_next_provider(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    monkeypatch.setattr(jarvis, "get_provider", lambda: "claude")
+    monkeypatch.setattr(jarvis, "get_api_key", lambda provider=None: "key" if provider in {"claude", "openrouter"} else None)
+    monkeypatch.setattr(jarvis, "get_model", lambda provider=None: "model-" + (provider or "claude"))
+    jarvis._PROVIDER_COOLDOWNS.clear()
+    calls = []
+
+    def fake_call(provider, model, api_key, instructions, history):
+        calls.append(provider)
+        if provider == "claude":
+            raise jarvis.ProviderHTTPError(400, "invalid_request_error")
+        return "Recovered using OpenRouter."
+
+    monkeypatch.setattr(jarvis, "_call_provider", fake_call)
+    response = client.post("/api/chat", headers={"Authorization": "Bearer correct-token"}, json={"message": "hello", "history": []})
+    assert response.status_code == 200
+    assert response.json()["reply"] == "Recovered using OpenRouter."
+    assert calls == ["claude", "openrouter"]
+    assert "provider_failover" in client.get("/api/logs", headers={"Authorization": "Bearer correct-token"}).text
+
+
 def test_rate_limit_fails_over_to_next_configured_provider(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
     monkeypatch.setattr(jarvis, "get_provider", lambda: "openai")
