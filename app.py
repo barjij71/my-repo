@@ -303,8 +303,6 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
     history: list[dict[str, str]] = [{"role": item.role, "content": item.content} for item in req.history[-12:]]
     history.append({"role": "user", "content": req.message})
     candidates = _available_provider_order(primary)
-    if primary not in candidates and get_api_key(primary):
-        candidates.insert(0, primary)
     if not candidates:
         record_event("ERROR", "configuration", "No configured provider is currently available.", "Add an API key in Provider Settings or wait for a provider cooldown to expire.")
         raise HTTPException(status_code=503, detail="No configured provider is currently available. Check Provider Settings or wait for a cooldown to expire.")
