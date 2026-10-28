@@ -159,7 +159,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       ),
                     ),
                     const SizedBox(height: 10),
-                    const JarvisAvatar(height: 220),
+                    JarvisAvatar(height: MediaQuery.sizeOf(context).height < 720 ? 132 : 220),
                     const SizedBox(height: 10),
                     SegmentedButton<String>(
                       key: const ValueKey('language-selector'),
