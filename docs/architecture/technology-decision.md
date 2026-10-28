@@ -1,6 +1,6 @@
 # JARVIS technology decision
 
-- **Status:** Provisional recommendation; proof of concept required before production commitment.
+- **Status:** Flutter + shared Dart core approved as the production direction; platform validation and detailed feature decisions remain open.
 - **Prepared:** 2026-10-28
 - **Decision scope:** A shared JARVIS assistant for Windows and Android, with local data and permission-controlled device capabilities.
 
@@ -156,7 +156,9 @@ The POC satisfies the reproducible-build and mock interaction criteria, but not 
 
 The user has selected Android 16 as the initial target device and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. The production Android minimum, distribution/signing, budget, real speech engines, and Copilot Coding Agent enablement remain unknown.
 
-**Decision now:** Flutter plus a shared Dart core remains a recommendation, not an approved production stack. Do not migrate the existing app, add real system-control operations, select production ASR/TTS engines, or claim production readiness until the user approves the architecture and remaining platform requirements are resolved.
+**Approval:** On 2026-10-28, the user approved Flutter plus a shared Dart core as the production direction.
+
+This approval is not approval to bypass operating-system protections or to add unbounded automation. Keep system operations behind permission-aware platform interfaces, use explicit confirmations for sensitive actions, and fail safely where the OS does not support a capability. The Android minimum version, real ASR/TTS engines, budget, distribution/signing, and physical-device behavior still require resolution. The existing Python application has not been migrated; the verified app remains a mock-only prototype.
 
 ## 10. References
 
