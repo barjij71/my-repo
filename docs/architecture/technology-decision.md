@@ -13,7 +13,7 @@
 | Copilot Coding Agent | **Unknown.** The token has a `copilot` scope, which does not establish that Coding Agent is enabled for this repository. Smallest check: inspect the repository's Copilot coding agent settings in GitHub or attempt a repository-scoped agent task. |
 | Development host | Windows 11 Pro x64, build 26200. Python 3.12 and JDK 21 are available. Android platform-tools (`adb`) are present, but no Flutter SDK, .NET SDK, Android SDK, emulator, or attached Android device was found. |
 | Current application | Python 3.12/FastAPI API, single-file HTML/JavaScript dashboard, SQLite history and memory, Windows Credential Manager/keyring, restricted Windows tools, and a PyInstaller/WebView2 desktop launcher. There is no Android app. |
-| Android target | User reports Android 16. Treat API 36 as the initial proof-of-concept device target, not a confirmed minimum supported version. The minimum Android release remains unknown. |
+| Android target | User specified Android 16 as the oldest supported version. Use API 36 as the production minimum and initial target; physical-device verification remains outstanding. |
 | Offline behavior | Existing local SQLite history/memory and downloadable Piper English/Jordanian-Arabic TTS work offline. AI chat uses a remote provider; browser speech recognition may use an online service. No offline Arabic/Darija ASR or Moroccan-Darija voice has been verified. |
 | Budget | No budget ceiling or paid-service approval is known. The prototype must use mocked AI and speech so it needs no provider credentials and causes no usage charges. |
 | Device access | User requests broad Windows and Android capabilities, and has approved user-granted permissions with confirmation for sensitive actions. This means normal OS permissions and APIs, not bypassing Android sandboxing, Windows UAC, or other OS security boundaries. |
@@ -23,7 +23,6 @@
 
 | Unknown | Smallest resolution |
 |---|---|
-| Minimum Android version | The proof of concept will target the user's Android 16/API 36 device. Confirm the oldest supported Android version before production release; use API 29 only as a provisional build floor if tooling requires one. |
 | Copilot Coding Agent enablement | Check the repository's GitHub Copilot settings; the local token scope is not proof of repository entitlement. |
 | Device-specific permissions and hardware | No Android device is attached to ADB. Run the prototype on the user's Android 16 device before claiming microphone, audio-focus, background, or native-permission behavior works there. |
 | Offline speech requirements | Keep ASR and TTS behind replaceable interfaces. Select real engines only after Arabic, Moroccan Darija, English quality, on-device performance, license, and download-size tests. |
@@ -126,7 +125,7 @@ The proof of concept may keep this layout under `prototype/` if needed to avoid 
 4. Implement a controllable mock speech engine with start/stop/cancel and a test proving a second playback cannot overlap the first.
 5. Add unit/widget tests for language direction, mock responses, cancellation, and unsupported platform operations.
 6. Add a dedicated GitHub Actions workflow for analysis/tests and Windows/Android builds; push only the isolated TDR/prototype commits to the feature branch and inspect the resulting run.
-7. Only after those checks, revisit the weighted comparison, record test results and limitations, and decide whether to promote Flutter from provisional recommendation to production architecture.
+7. Only after those checks, revisit the weighted comparison and record test results and limitations. Android API 36 is the production minimum; the prototype's API 29 floor is only a build setting and does not change that requirement.
 
 ### Proof-of-concept acceptance criteria
 
@@ -147,18 +146,18 @@ Verified on 2026-10-28:
 - **GitHub Actions:** both `verify-and-build-android` and `build-windows` succeeded on the prototype commit: https://github.com/barjij71/my-repo/actions/runs/40604964896
 - **Flutter checks:** `flutter analyze` reported no issues; all four tests passed locally and in CI. Tests cover English/Arabic direction, mock responses, unsupported device-control reporting, and speech overlap/cancellation.
 - **Windows:** the GitHub-built Windows artifact was downloaded and launched on this Windows 11 host; its process remained running. A local source build could not find a suitable Visual Studio toolchain, so the verified binary came from the GitHub-hosted Windows runner.
-- **Android:** GitHub produced a debug APK targeting API 36 with a provisional API 29 minimum. No emulator or physical Android device is attached; installation, runtime permissions, and behavior on the user's Android 16 device remain unverified.
+- **Android:** GitHub produced a debug APK targeting API 36 with a prototype-only API 29 minimum. The user's production minimum is Android 16/API 36. No emulator or physical Android device is attached; installation, runtime permissions, and behavior on the user's device remain unverified.
 - **Explicitly not demonstrated:** real provider calls, microphone capture, ASR, TTS audio or quality, background behavior, persistent memory, secure credential storage, production signing, or any native system-control action. The prototype intentionally uses mocks and has no device permissions.
 
 The POC satisfies the reproducible-build and mock interaction criteria, but not hardware validation or production speech/security requirements.
 
 ## 9. Approval checkpoint
 
-The user has selected Android 16 as the initial target device and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. The production Android minimum, distribution/signing, budget, real speech engines, and Copilot Coding Agent enablement remain unknown.
+The user has selected Android 16/API 36 as the oldest supported Android release and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. Distribution/signing, budget, real speech engines, physical-device behavior, and Copilot Coding Agent enablement remain unknown.
 
 **Approval:** On 2026-10-28, the user approved Flutter plus a shared Dart core as the production direction.
 
-This approval is not approval to bypass operating-system protections or to add unbounded automation. Keep system operations behind permission-aware platform interfaces, use explicit confirmations for sensitive actions, and fail safely where the OS does not support a capability. The Android minimum version, real ASR/TTS engines, budget, distribution/signing, and physical-device behavior still require resolution. The existing Python application has not been migrated; the verified app remains a mock-only prototype.
+This approval is not approval to bypass operating-system protections or to add unbounded automation. Keep system operations behind permission-aware platform interfaces, use explicit confirmations for sensitive actions, and fail safely where the OS does not support a capability. Android API 36 is the production minimum. Real ASR/TTS engines, budget, distribution/signing, and physical-device behavior still require resolution. The existing Python application has not been migrated; the verified app remains a mock-only prototype.
 
 ## 10. References
 
