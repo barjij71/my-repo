@@ -139,13 +139,26 @@ The proof of concept may keep this layout under `prototype/` if needed to avoid 
 - CI reports a successful run for the prototype commit.
 - The result explicitly labels actual speech recognition, real TTS quality, physical-device behavior, production credentials, and system control as unverified.
 
-## 8. Approval checkpoint
+## 8. Proof-of-concept results
+
+Verified on 2026-10-28:
+
+- **GitHub commit:** `c825e5c4d84acec43f0deac3d12015a5b0e6b9c9` (`Add JARVIS technology proof of concept`).
+- **GitHub Actions:** both `verify-and-build-android` and `build-windows` succeeded on the prototype commit: https://github.com/barjij71/my-repo/actions/runs/40604964896
+- **Flutter checks:** `flutter analyze` reported no issues; all four tests passed locally and in CI. Tests cover English/Arabic direction, mock responses, unsupported device-control reporting, and speech overlap/cancellation.
+- **Windows:** the GitHub-built Windows artifact was downloaded and launched on this Windows 11 host; its process remained running. A local source build could not find a suitable Visual Studio toolchain, so the verified binary came from the GitHub-hosted Windows runner.
+- **Android:** GitHub produced a debug APK targeting API 36 with a provisional API 29 minimum. No emulator or physical Android device is attached; installation, runtime permissions, and behavior on the user's Android 16 device remain unverified.
+- **Explicitly not demonstrated:** real provider calls, microphone capture, ASR, TTS audio or quality, background behavior, persistent memory, secure credential storage, production signing, or any native system-control action. The prototype intentionally uses mocks and has no device permissions.
+
+The POC satisfies the reproducible-build and mock interaction criteria, but not hardware validation or production speech/security requirements.
+
+## 9. Approval checkpoint
 
 The user has selected Android 16 as the initial target device and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. The production Android minimum, distribution/signing, budget, real speech engines, and Copilot Coding Agent enablement remain unknown.
 
-**Decision now:** proceed only with the isolated, mocked Flutter proof of concept. Do not migrate the existing app, add real system-control operations, select production ASR/TTS engines, or claim a final production stack until the acceptance criteria and user-device validation are reviewed.
+**Decision now:** Flutter plus a shared Dart core remains a recommendation, not an approved production stack. Do not migrate the existing app, add real system-control operations, select production ASR/TTS engines, or claim production readiness until the user approves the architecture and remaining platform requirements are resolved.
 
-## 9. References
+## 10. References
 
 - Flutter supported deployment platforms: https://docs.flutter.dev/reference/supported-platforms
 - .NET MAUI supported platforms: https://learn.microsoft.com/dotnet/maui/supported-platforms?view=net-maui-10.0
