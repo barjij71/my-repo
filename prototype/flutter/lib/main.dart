@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:jarvis_core/jarvis_core.dart';
 
+import 'jarvis_avatar.dart';
+
 void main() {
   runApp(const JarvisPocApp());
 }
@@ -25,6 +27,11 @@ class JarvisPocApp extends StatelessWidget {
       title: 'JARVIS prototype',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        scaffoldBackgroundColor: const Color(0xFF06111B),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF071A27),
+          foregroundColor: Color(0xFFE3FAFF),
+        ),
       ),
       home: ChatScreen(
         aiProvider: aiProvider,
@@ -151,6 +158,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 10),
+                    const JarvisAvatar(height: 220),
+                    const SizedBox(height: 10),
                     SegmentedButton<String>(
                       key: const ValueKey('language-selector'),
                       segments: const [
