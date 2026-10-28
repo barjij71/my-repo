@@ -8,13 +8,14 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const JarvisPocApp());
+    expect(find.byKey(const ValueKey('jarvis-avatar')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey('chat-input')),
       'Hello JARVIS',
     );
     await tester.tap(find.byKey(const ValueKey('send-button')));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('Hello JARVIS'), findsOneWidget);
     expect(find.text('This is a mock JARVIS reply.'), findsOneWidget);
@@ -26,7 +27,7 @@ void main() {
     await tester.pumpWidget(const JarvisPocApp());
 
     await tester.tap(find.text('العربية'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(
       Directionality.of(
         tester.element(find.byKey(const ValueKey('chat-input'))),
@@ -39,7 +40,7 @@ void main() {
       'مرحبا بجارفيس',
     );
     await tester.tap(find.byKey(const ValueKey('send-button')));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     final reply = find.text('هذا رد تجريبي من جارفس.');
     expect(reply, findsOneWidget);
@@ -52,7 +53,7 @@ void main() {
       await tester.pumpWidget(const JarvisPocApp());
 
       await tester.tap(find.byKey(const ValueKey('device-control-button')));
-      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(
         find.text('This capability is not implemented in the prototype.'),
