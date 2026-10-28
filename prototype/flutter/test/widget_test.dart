@@ -8,6 +8,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(const JarvisPocApp());
+    expect(find.byKey(const ValueKey('jarvis-avatar')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const ValueKey('chat-input')),
