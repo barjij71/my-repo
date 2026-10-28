@@ -60,6 +60,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _input = TextEditingController();
+  final _messagesController = ScrollController();
   final _messages = <ChatMessage>[];
   String _languageCode = 'en';
   bool _waitingForReply = false;
@@ -69,6 +70,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _input.dispose();
+    _messagesController.dispose();
     unawaited(widget.speechEngine.cancel());
     super.dispose();
   }
@@ -97,6 +99,13 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       setState(() => _messages.add(reply));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_messagesController.hasClients) {
+          _messagesController.jumpTo(
+            _messagesController.position.maxScrollExtent,
+          );
+        }
+      });
     } finally {
       if (mounted) setState(() => _waitingForReply = false);
     }
@@ -146,21 +155,23 @@ class _ChatScreenState extends State<ChatScreen> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 760),
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
                     const Card(
                       child: Padding(
-                        padding: EdgeInsets.all(12),
+                        padding: EdgeInsets.all(10),
                         child: Text(
                           'Proof of concept only: AI and speech are mocked. '
                           'No microphone, network provider, or device controls are active.',
                         ),
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    JarvisAvatar(height: MediaQuery.sizeOf(context).height < 720 ? 132 : 220),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 6),
+                    JarvisAvatar(
+                      height: MediaQuery.sizeOf(context).height < 720 ? 104 : 190,
+                    ),
+                    const SizedBox(height: 6),
                     SegmentedButton<String>(
                       key: const ValueKey('language-selector'),
                       segments: const [
@@ -172,9 +183,10 @@ class _ChatScreenState extends State<ChatScreen> {
                         setState(() => _languageCode = selection.first);
                       },
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     Expanded(
                       child: ListView.builder(
+                        controller: _messagesController,
                         itemCount: _messages.length,
                         itemBuilder: (context, index) {
                           final message = _messages[index];
@@ -217,7 +229,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         border: OutlineInputBorder(),
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
