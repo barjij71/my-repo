@@ -153,11 +153,11 @@ The POC satisfies the reproducible-build and mock interaction criteria, but not 
 
 ## 9. Approval checkpoint
 
-The user has selected Android 16/API 36 as the oldest supported Android release and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. Distribution/signing, budget, real speech engines, physical-device behavior, and Copilot Coding Agent enablement remain unknown.
+The user has selected Android 16/API 36 as the oldest supported Android release and approved broad capabilities only when granted through normal OS permissions, with confirmation for sensitive actions. Distribution/signing, paid-service budget, physical-device behavior, and Copilot Coding Agent enablement remain unknown. The speech preference is free, local neural synthesis rather than the operating system's built-in voices.
 
 **Approval:** On 2026-10-28, the user approved Flutter plus a shared Dart core as the production direction.
 
-This approval is not approval to bypass operating-system protections or to add unbounded automation. Keep system operations behind permission-aware platform interfaces, use explicit confirmations for sensitive actions, and fail safely where the OS does not support a capability. Android API 36 is the production minimum. Real ASR/TTS engines, budget, distribution/signing, and physical-device behavior still require resolution. The existing Python application has not been migrated; the verified app remains a mock-only prototype.
+This approval is not approval to bypass operating-system protections or to add unbounded automation. Keep system operations behind permission-aware platform interfaces, use explicit confirmations for sensitive actions, and fail safely where the OS does not support a capability. Android API 36 is the production minimum. Budget, distribution/signing, and physical-device behavior still require resolution. The existing Python application has not been migrated; the Flutter prototype remains mock-only.
 
 ## 10. References
 
@@ -167,3 +167,13 @@ This approval is not approval to bypass operating-system protections or to add u
 - Android background-work and lifecycle guidance: https://developer.android.com/develop/background-work
 - Android `SpeechRecognizer` security, lifecycle, and remote-processing notes: https://developer.android.com/reference/android/speech/SpeechRecognizer
 - WebView2 Evergreen deployment and per-user installation: https://learn.microsoft.com/microsoft-edge/webview2/concepts/distribution
+
+## 11. Speech-engine decision and validation boundary
+
+On 2026-10-28, the user chose an optional Windows-first Chatterbox integration, retaining Piper as the lightweight offline fallback, followed by separate Android-runtime evaluation. The user's requested direction is free local model synthesis, not Windows/Android built-in speech voices.
+
+- The selected model is **Chatterbox Multilingual V3** (`ResembleAI/chatterbox`) because its model card lists Arabic and English and declares MIT licensing. The official implementation applies an audio watermark. It uses bundled speaker conditioning in this integration; no user recording or voice clone is required.
+- The pinned model snapshot is `5bb1f6ee58e50c3b8d408bc82a6d3740c2db6e18`. Required weights and assets total about 3.2 GB. Installation is optional and user-triggered; the base JARVIS setup does not install PyTorch or download the model.
+- The inspected Windows host has 8 GB RAM and an Intel i3-6100U. CPU latency, peak memory, actual Arabic/Darija quality, and long-session stability have not been tested. The UI warns about the model size and resource use; Piper remains the default unless the user downloads and selects Chatterbox.
+- Android inference is not implemented. The Flutter `SpeechEngine` remains mock-only; a community ONNX conversion is not treated as verified production support. Test a maintained runtime and physical Android 16/API 36 device before enabling a real mobile engine.
+- The supplied model list is not a set of interchangeable solutions: Kokoro, Qwen3-TTS, and CosyVoice do not list Arabic; OmniVoice weights are CC-BY-NC; VoxCPM2 is a 2B model with an approximately 8 GB VRAM requirement; Kitten TTS 2 is 1.7B and uses a restricted community license. These models are not installed or bundled.
