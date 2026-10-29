@@ -4,7 +4,60 @@ import os
 import sys
 import threading
 import time
-import webbrowser
+from urllib.parse import urlsplit
+
+
+class LocalDesktopBridge:
+    _WINDOWS_SETTINGS = {
+        "general": "ms-settings:",
+        "sound": "ms-settings:sound",
+        "display": "ms-settings:display",
+        "network": "ms-settings:network",
+    }
+
+    def __init__(self, expected_url: str) -> None:
+        self.expected_url = expected_url
+        self.window = None
+
+    def _is_trusted_page(self) -> bool:
+        if self.window is None:
+            return False
+        try:
+            current_url = self.window.get_current_url()
+        except Exception:
+            return False
+        expected = urlsplit(self.expected_url)
+        current = urlsplit(current_url or "")
+        return (
+            (current.scheme, current.hostname, current.port)
+            == (expected.scheme, expected.hostname, expected.port)
+            and current.path in {"", "/"}
+            and not current.query
+            and not current.fragment
+        )
+
+    def get_access_token(self) -> str:
+        if not self._is_trusted_page():
+            return ""
+        from app import APP_TOKEN
+
+        return APP_TOKEN
+
+    def open_windows_settings(self, setting: str) -> dict[str, bool | str]:
+        target = self._WINDOWS_SETTINGS.get(setting) if isinstance(setting, str) else None
+        if target is None or not self._is_trusted_page():
+            return {
+                "opened": False,
+                "error": "Windows Settings shortcut unavailable or not allowed.",
+            }
+        open_target = getattr(os, "startfile", None)
+        if open_target is None:
+            return {"opened": False, "error": "Windows Settings could not be opened."}
+        try:
+            open_target(target)
+        except OSError:
+            return {"opened": False, "error": "Windows Settings could not be opened."}
+        return {"opened": True}
 
 
 def main() -> int:
@@ -19,6 +72,8 @@ def main() -> int:
         from app import app
         from pathlib import Path
         from computer_control import tool_schemas
+        from piper import PiperVoice
+        import webview
 
         # `app` is the FastAPI instance, not the Python module. In a PyInstaller
         # onedir build, bundled data normally lives under sys._MEIPASS.
@@ -34,7 +89,17 @@ def main() -> int:
             print("Checked: " + "; ".join(str(path) for path in candidates))
             return 3
         route_paths = {getattr(route, "path", "") for route in app.routes}
-        required_routes = {"/", "/api/health", "/api/status", "/api/system", "/api/chat"}
+        required_routes = {
+            "/",
+            "/api/health",
+            "/api/status",
+            "/api/system",
+            "/api/chat",
+            "/api/providers/{provider}/credential",
+            "/api/memories",
+            "/api/memories/export",
+            "/api/memories/{memory_id}",
+        }
         if not required_routes.issubset(route_paths):
             print("JARVIS package self-test failed: expected API routes are missing.")
             return 3
@@ -43,7 +108,13 @@ def main() -> int:
         if not required_tools.issubset(available_tools):
             print("JARVIS package self-test failed: expected local tools are missing.")
             return 3
-        print("JARVIS package self-test passed: imports, static UI, API routes, and required tools are available.")
+        if not callable(PiperVoice.load):
+            print("JARVIS package self-test failed: offline neural voice runtime is unavailable.")
+            return 3
+        if not callable(webview.create_window):
+            print("JARVIS package self-test failed: native desktop window runtime is unavailable.")
+            return 3
+        print("JARVIS package self-test passed: imports, static UI, API routes, computer tools, offline voice runtime, and native desktop runtime are available.")
         return 0
 
     # Configure credentials BEFORE importing app: app reads JARVIS_ACCESS_TOKEN
@@ -85,13 +156,31 @@ def main() -> int:
     url = f"http://127.0.0.1:{port}"
     print()
     print(f"JARVIS is ready at {url}")
-    print("Paste the local access token shown above into the browser page. Keep the token private.")
-    webbrowser.open(url, new=2)
     try:
-        while thread.is_alive():
-            thread.join(timeout=0.5)
+        import webview
+
+        bridge = LocalDesktopBridge(url + "/")
+        window = webview.create_window(
+            "JARVIS — AI Core Overview",
+            url,
+            width=1440,
+            height=940,
+            min_size=(960, 680),
+            background_color="#030b14",
+            text_select=True,
+            js_api=bridge,
+        )
+        bridge.window = window
+        webview.start(debug=False, private_mode=True)
     except KeyboardInterrupt:
         print("\nStopping JARVIS...")
+    except Exception as exc:
+        print(
+            f"JARVIS desktop window could not start ({type(exc).__name__}). "
+            "Install or repair Microsoft Edge WebView2 Runtime, then retry."
+        )
+        return 1
+    finally:
         server.should_exit = True
         thread.join(timeout=5)
     return 0
