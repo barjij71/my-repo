@@ -32,6 +32,8 @@ def test_memory_rejects_empty_and_oversized_content(tmp_path, monkeypatch):
         memory_store.save_memory("   ")
     with pytest.raises(ValueError, match="limit"):
         memory_store.save_memory("x" * (memory_store.MAX_MEMORY_CHARS + 1))
+    with pytest.raises(ValueError, match="will not save secrets"):
+        memory_store.save_memory("A nonsensitive fact.", "password=secret")
 
 
 @pytest.mark.parametrize(
@@ -56,3 +58,25 @@ def test_forget_requires_an_exact_existing_id(tmp_path, monkeypatch):
         memory_store.forget_memory(0)
     with pytest.raises(ValueError, match="No saved memory"):
         memory_store.forget_memory(99)
+
+
+def test_memory_update_and_export_preserve_local_records(tmp_path, monkeypatch):
+    monkeypatch.setenv("JARVIS_MEMORY_DB", str(tmp_path / "memory.sqlite3"))
+    saved = memory_store.save_memory("Prefers English.", "preference")
+    memory_id = saved["memory"]["id"]
+
+    updated = memory_store.update_memory(memory_id, "Prefers concise English replies.", "preference")
+    assert updated["updated"] is True
+    assert updated["memory"]["id"] == memory_id
+    duplicate = memory_store.save_memory("Prefers French.", "preference")
+    with pytest.raises(ValueError, match="identical memory"):
+        memory_store.update_memory(memory_id, duplicate["memory"]["content"], "preference")
+    exported = memory_store.export_memories()
+    assert exported["total"] == 2
+    assert exported["memories"][0]["id"] == memory_id
+    assert exported["memories"][0]["content"] == "Prefers concise English replies."
+
+    with pytest.raises(ValueError, match="will not save secrets"):
+        memory_store.update_memory(memory_id, "password=unsafe")
+    with pytest.raises(ValueError, match="No saved memory"):
+        memory_store.update_memory(99, "No target")
