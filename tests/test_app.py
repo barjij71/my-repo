@@ -193,6 +193,15 @@ def test_save_provider_settings_never_returns_api_key(monkeypatch):
     assert "do-not-return-this" not in response.text
     assert store["GEMINI_API_KEY"] == "do-not-return-this"
 
+    # Reload settings through the public API to prove provider/model/key state persists.
+    reloaded = client.get("/api/providers", headers={"Authorization": "Bearer correct-token"})
+    assert reloaded.status_code == 200
+    reloaded_payload = reloaded.json()
+    assert reloaded_payload["provider"] == "gemini"
+    assert reloaded_payload["model"] == "gemini-2.5-flash"
+    assert reloaded_payload["key_configured"] is True
+    assert "do-not-return-this" not in reloaded.text
+
 
 def test_unknown_and_removed_grok_provider_are_rejected(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
