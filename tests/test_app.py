@@ -147,6 +147,35 @@ def test_provider_list_is_safe_and_includes_requested_providers(monkeypatch):
     assert "key" not in payload
 
 
+def test_provider_list_includes_each_providers_saved_model_and_key_state(monkeypatch):
+    monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
+    values = {
+        "JARVIS_PROVIDER": "gemini",
+        "JARVIS_MODEL_OPENAI": "gpt-custom",
+        "JARVIS_MODEL_CLAUDE": "claude-custom",
+        "JARVIS_MODEL_GEMINI": "gemini-custom",
+        "JARVIS_MODEL_OPENROUTER": "router-custom",
+        "OPENAI_API_KEY": "openai-secret",
+        "CLAUDE_API_KEY": "",
+        "GEMINI_API_KEY": "gemini-secret",
+        "OPENROUTER_API_KEY": "",
+    }
+    monkeypatch.setattr(jarvis, "credential_get", lambda name: values.get(name))
+    response = client.get("/api/providers", headers={"Authorization": "Bearer correct-token"})
+    assert response.status_code == 200
+    payload = response.json()
+    by_id = {provider["id"]: provider for provider in payload["providers"]}
+    assert by_id["openai"]["model"] == "gpt-custom"
+    assert by_id["openai"]["key_configured"] is True
+    assert by_id["claude"]["model"] == "claude-custom"
+    assert by_id["claude"]["key_configured"] is False
+    assert by_id["gemini"]["model"] == "gemini-custom"
+    assert by_id["gemini"]["key_configured"] is True
+    assert by_id["openrouter"]["model"] == "router-custom"
+    assert by_id["openrouter"]["key_configured"] is False
+    assert "gemini-secret" not in response.text
+
+
 def test_save_provider_settings_never_returns_api_key(monkeypatch):
     monkeypatch.setattr(jarvis, "APP_TOKEN", "correct-token")
     store = {}
@@ -163,6 +192,15 @@ def test_save_provider_settings_never_returns_api_key(monkeypatch):
     assert payload["key_configured"] is True
     assert "do-not-return-this" not in response.text
     assert store["GEMINI_API_KEY"] == "do-not-return-this"
+
+    # Reload settings through the public API to prove provider/model/key state persists.
+    reloaded = client.get("/api/providers", headers={"Authorization": "Bearer correct-token"})
+    assert reloaded.status_code == 200
+    reloaded_payload = reloaded.json()
+    assert reloaded_payload["provider"] == "gemini"
+    assert reloaded_payload["model"] == "gemini-2.5-flash"
+    assert reloaded_payload["key_configured"] is True
+    assert "do-not-return-this" not in reloaded.text
 
 
 def test_unknown_and_removed_grok_provider_are_rejected(monkeypatch):
