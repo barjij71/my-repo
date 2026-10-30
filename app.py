@@ -17,6 +17,7 @@ import httpx
 from openai import OpenAI
 
 from computer_control import execute_tool, tool_schemas
+from skill_library import delete_skill, load_skills, parse_skill, save_skills, set_skill_enabled, skill_prompt_for
 from pydantic import BaseModel, Field, StringConstraints
 from typing_extensions import Annotated
 
@@ -181,6 +182,16 @@ class ProviderSettingsRequest(BaseModel):
     model: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=160)]
     api_key: Annotated[str, StringConstraints(max_length=1000)] = ""
 
+class SkillUploadRequest(BaseModel):
+    file_name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=180)]
+    content: Annotated[str, StringConstraints(min_length=1, max_length=100000)]
+
+
+class SkillToggleRequest(BaseModel):
+    enabled: bool
+
+
+
 
 def verify_token(authorization: str | None) -> None:
     if not APP_TOKEN:
@@ -270,6 +281,49 @@ def test_provider_connection(authorization: str | None = Header(default=None)) -
         category, message, action = safe_provider_error(exc)
         record_event("ERROR", category, f"Provider test failed: {message}", action)
         raise HTTPException(status_code=502, detail=f"{PROVIDERS[provider]['label']} test failed: {message} {action}") from None
+
+@app.get("/api/skills")
+def get_skills(authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    return {"skills": load_skills(), "limit": 50, "storage": "local user profile"}
+
+
+@app.post("/api/skills")
+def upload_skill(req: SkillUploadRequest, authorization: str | None = Header(default=None)) -> dict[str, object]:
+    verify_token(authorization)
+    try:
+        skill = parse_skill(req.file_name, req.content)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    skills = load_skills()
+    if len(skills) >= 50:
+        raise HTTPException(status_code=409, detail="Skill library is full (maximum 50). Remove a skill before importing another.")
+    if any(item["name"].casefold() == skill["name"].casefold() for item in skills):
+        raise HTTPException(status_code=409, detail="A skill with this name already exists.")
+    skills.append(skill)
+    try:
+        save_skills(skills)
+    except OSError:
+        raise HTTPException(status_code=503, detail="Could not save skills to the local user profile.") from None
+    record_event("INFO", "skills", f"Imported skill: {skill['name']}.", "Review its instructions and enable it when ready.")
+    return {"saved": True, "skill": skill}
+
+
+@app.patch("/api/skills/{skill_id}")
+def toggle_skill(skill_id: str, req: SkillToggleRequest, authorization: str | None = Header(default=None)) -> dict[str, bool]:
+    verify_token(authorization)
+    if not set_skill_enabled(skill_id, req.enabled):
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return {"updated": True, "enabled": req.enabled}
+
+
+@app.delete("/api/skills/{skill_id}")
+def remove_skill(skill_id: str, authorization: str | None = Header(default=None)) -> dict[str, bool]:
+    verify_token(authorization)
+    if not delete_skill(skill_id):
+        raise HTTPException(status_code=404, detail="Skill not found.")
+    return {"deleted": True}
+
 
 @app.get("/api/logs")
 def get_logs(authorization: str | None = Header(default=None)) -> dict[str, object]:
@@ -377,6 +431,7 @@ def chat(req: ChatRequest, authorization: str | None = Header(default=None)) -> 
             "DISM/SFC repair, app uninstall, and closing a process are staged actions: first explain the exact action and consequences and ask the user to confirm that specific action. Do not call confirm_pending_action until the latest user message explicitly confirms that exact staged action; a general request is not confirmation. If the user declines, cancel it. "
             "Never execute arbitrary shell commands, copy-pasted commands, or files from paths; clipboard copy is text-only. Never force-kill processes. Never remove security products, drivers, shared runtimes, Windows components, or files manually as virus cleanup. Use an available reputable scanner such as ClamAV or ESET Online Scanner; if no scanner is installed, explain the official download options and do not download or run installers automatically. Never delete detections automatically. If the user requests removal, stage moving only that exact reviewed file to reversible JARVIS quarantine, verify its SHA-256 has not changed since review, and require explicit confirmation for that exact action. Never permanently delete files. Explain that Metasploit and other penetration-testing tools can be legitimate and may trigger PUA detections. The on-demand ClamAV scan runs at below-normal process priority with file-count, recursion, size, and timeout limits; it does not automatically update signatures to avoid unexpected load. Do not claim RAM was freed unless a process close is confirmed; process inventory is read-only. Explain that admin permissions may be required for system repair."
         )
+    instructions += skill_prompt_for(req.message)
     for index, provider in enumerate(candidates):
         key = get_api_key(provider)
         if not key:
