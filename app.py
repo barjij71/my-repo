@@ -221,7 +221,7 @@ def status(authorization: str | None = Header(default=None)) -> dict[str, object
 def provider_settings(authorization: str | None = Header(default=None)) -> dict[str, object]:
     verify_token(authorization)
     provider = get_provider()
-    return {"provider": provider, "providers": [{"id": key, "label": value["label"], "default_model": value["default_model"]} for key, value in PROVIDERS.items()], "model": get_model(provider), "key_configured": bool(get_api_key(provider)), "configured_providers": [p for p in _FAILOVER_ORDER if get_api_key(p)], "automatic_failover": True, "key_storage": "Windows Credential Manager / system keyring"}
+    return {"provider": provider, "providers": [{"id": key, "label": value["label"], "default_model": value["default_model"], "model": get_model(key), "key_configured": bool(get_api_key(key))} for key, value in PROVIDERS.items()], "model": get_model(provider), "key_configured": bool(get_api_key(provider)), "configured_providers": [p for p in _FAILOVER_ORDER if get_api_key(p)], "automatic_failover": True, "key_storage": "Windows Credential Manager / system keyring"}
 
 @app.post("/api/providers")
 def save_provider_settings(req: ProviderSettingsRequest, authorization: str | None = Header(default=None)) -> dict[str, object]:
