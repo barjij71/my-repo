@@ -80,7 +80,7 @@ def save_memory(content: str, category: str = "general") -> dict[str, Any]:
         raise ValueError(f"Memory exceeds the {MAX_MEMORY_CHARS}-character limit.")
     if len(label) > MAX_CATEGORY_CHARS:
         raise ValueError(f"Category exceeds the {MAX_CATEGORY_CHARS}-character limit.")
-    if any(pattern.search(text) for pattern in _SECRET_PATTERNS):
+    if any(pattern.search(value) for value in (text, label) for pattern in _SECRET_PATTERNS):
         raise ValueError("This looks like a password, API key, access token, or private key. JARVIS will not save secrets.")
 
     with _database() as conn:
@@ -100,6 +100,45 @@ def save_memory(content: str, category: str = "general") -> dict[str, Any]:
             (cur.lastrowid,),
         ).fetchone()
         return {"ok": True, "saved": True, "memory": _record(row)}
+
+
+def update_memory(memory_id: int, content: str, category: str = "general") -> dict[str, Any]:
+    try:
+        memory_id = int(memory_id)
+    except (TypeError, ValueError):
+        raise ValueError("Provide the exact numeric memory ID.") from None
+    text = content.strip()
+    label = category.strip() or "general"
+    if memory_id < 1:
+        raise ValueError("Provide the exact numeric memory ID.")
+    if not text:
+        raise ValueError("Memory content cannot be empty.")
+    if len(text) > MAX_MEMORY_CHARS:
+        raise ValueError(f"Memory exceeds the {MAX_MEMORY_CHARS}-character limit.")
+    if len(label) > MAX_CATEGORY_CHARS:
+        raise ValueError(f"Category exceeds the {MAX_CATEGORY_CHARS}-character limit.")
+    if any(pattern.search(value) for value in (text, label) for pattern in _SECRET_PATTERNS):
+        raise ValueError("This looks like a password, API key, access token, or private key. JARVIS will not save secrets.")
+
+    with _database() as conn:
+        row = conn.execute(
+            "SELECT id, content, category, created_at FROM memories WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
+        if not row:
+            raise ValueError("No saved memory exists with that ID.")
+        try:
+            conn.execute(
+                "UPDATE memories SET content = ?, category = ? WHERE id = ?",
+                (text, label, memory_id),
+            )
+        except sqlite3.IntegrityError:
+            raise ValueError("An identical memory is already saved.") from None
+        updated = conn.execute(
+            "SELECT id, content, category, created_at FROM memories WHERE id = ?",
+            (memory_id,),
+        ).fetchone()
+        return {"ok": True, "updated": True, "memory": _record(updated)}
 
 
 def search_memories(query: str, limit: int = 10) -> dict[str, Any]:
@@ -132,6 +171,14 @@ def list_memories(limit: int = 20) -> dict[str, Any]:
         ).fetchall()
         count = conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
     return {"ok": True, "total": int(count), "memories": [_record(r) for r in rows]}
+
+
+def export_memories() -> dict[str, Any]:
+    with _database() as conn:
+        rows = conn.execute(
+            "SELECT id, content, category, created_at FROM memories ORDER BY id"
+        ).fetchall()
+    return {"ok": True, "total": len(rows), "memories": [_record(row) for row in rows]}
 
 
 def forget_memory(memory_id: int) -> dict[str, Any]:

@@ -24,26 +24,23 @@ def main() -> int:
     try:
         reset_api_key = "--reset-api-key" in sys.argv[1:]
         current_key = keyring.get_password(SERVICE, API_KEY_NAME)
-        if reset_api_key or not current_key:
-            prompt = "Replacement OpenAI API key" if current_key else "OpenAI API key"
-            print(f"{prompt} setup (input is hidden; key is stored in Windows Credential Manager).")
-            key = getpass.getpass(f"{prompt}: ").strip()
+        if reset_api_key:
+            print("Replacement OpenAI API key setup (input is hidden; key is stored in Windows Credential Manager).")
+            key = getpass.getpass("Replacement OpenAI API key: ").strip()
             if not key:
-                print("No key entered; existing credentials were left unchanged.", file=sys.stderr)
+                print("No key entered; the existing credential was left unchanged.", file=sys.stderr)
                 return 1
             keyring.set_password(SERVICE, API_KEY_NAME, key)
             del key
             print("API key saved to Windows Credential Manager.")
+        elif not current_key:
+            print("No OpenAI API key is configured. JARVIS can start in limited mode; add any supported provider in Settings.")
 
         token = keyring.get_password(SERVICE, ACCESS_TOKEN_NAME)
         if not token:
             token = secrets.token_urlsafe(32)
             keyring.set_password(SERVICE, ACCESS_TOKEN_NAME, token)
-        print()
-        print("JARVIS local access token (keep private; required by the browser UI):")
-        print(token)
-        print()
-        print("The token is stored in Windows Credential Manager and is not committed to this repository.")
+        print("JARVIS local access token is stored in Windows Credential Manager and loaded automatically by the desktop app.")
         return 0
     except Exception as exc:
         print(f"Credential Manager operation failed ({type(exc).__name__}).", file=sys.stderr)

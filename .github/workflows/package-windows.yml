@@ -7,6 +7,7 @@ on:
       - "app.py"
       - "computer_control.py"
       - "memory_store.py"
+      - "voice_output.py"
       - "jarvis_launcher.py"
       - "setup_credentials.py"
       - "requirements.txt"
@@ -37,7 +38,7 @@ jobs:
 
       - name: Build portable app
         run: |
-          python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --copy-metadata keyring --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core --collect-all win32ctypes jarvis_launcher.py
+          python -m PyInstaller --noconfirm --clean --onedir --name JARVIS --add-data "static;static" --collect-all keyring --copy-metadata keyring --collect-all piper --collect-all onnxruntime --collect-all uvicorn --collect-all fastapi --collect-all pydantic_core --collect-all webview --collect-all pythonnet --collect-all clr_loader --collect-all proxy_tools --collect-all bottle --collect-all win32ctypes jarvis_launcher.py
 
       - name: Smoke-test packaged executable without credentials or network calls
         shell: pwsh
@@ -52,10 +53,10 @@ jobs:
           JARVIS — Windows portable build
 
           1. Extract the entire JARVIS folder from this ZIP to a folder you control.
-          2. Double-click JARVIS.exe. Keep the console window open while using JARVIS.
-          3. On first launch, complete the local access-token setup. Connect to JARVIS, open Settings & Access → Provider Settings, then add and save an API key for each provider you want to use (OpenAI, Grok/xAI, Claude/Anthropic, Gemini/Google, or OpenRouter). Keys are stored in Windows Credential Manager. Select a provider and model, save it, then use Test Connection. JARVIS automatically tries other configured providers when one hits a rate limit/quota or transient connection failure, cools down the failed provider, and returns it to rotation after cooldown expiry.
-          4. Copy the local access token shown in the console into the JARVIS browser page and select Connect.
-          5. For hands-free live conversation, select LIVE OFF once in the page, allow microphone access, and speak naturally; recognized speech is submitted automatically and replies are spoken. Select LIVE ON to stop. Browser speech recognition may use an online provider.
+          2. Double-click JARVIS.exe. JARVIS opens in its standalone desktop window; keep the console window open while using it. Microsoft Edge WebView2 Runtime is required.
+          3. JARVIS creates and loads its local access token automatically. Open Settings & Access → Provider Settings, then add and save an API key for each provider you want to use (OpenAI, Claude/Anthropic, Gemini/Google, or OpenRouter). Keys are stored in Windows Credential Manager. Select a provider and model, save it, then use Test Connection to verify access. Startup does not issue a potentially billable test request. JARVIS automatically tries other configured providers when one hits a rate limit/quota or transient connection failure, cools down the failed provider, and returns it to rotation after cooldown expiry.
+          4. The desktop window connects to the local backend automatically. The access token stays in application memory and is not saved by the UI.
+          5. Open Settings & Access and download the Arabic and English offline neural voice models once (about 127 MB). Preview them, then turn VOICE ON for spoken replies or select LIVE OFF to start hands-free conversation. Choose Arabic (Morocco) or English (US) as the microphone recognition language. Browser speech recognition may use an online provider; voice replies are generated locally.
           6. Close the console or press Ctrl+C to stop JARVIS.
 
           Safety notes:
